@@ -6,12 +6,6 @@ also includes optional SDK tools that are resolved by name from agent setup.
 Tools that require interacting with the environment belong in `openhands-tools`.
 """
 
-from openhands.sdk.tool.builtins.classify_and_switch_llm import (
-    ClassifyAndSwitchLLMAction,
-    ClassifyAndSwitchLLMExecutor,
-    ClassifyAndSwitchLLMObservation,
-    ClassifyAndSwitchLLMTool,
-)
 from openhands.sdk.tool.builtins.finish import (
     FinishAction,
     FinishExecutor,
@@ -23,12 +17,6 @@ from openhands.sdk.tool.builtins.invoke_skill import (
     InvokeSkillExecutor,
     InvokeSkillObservation,
     InvokeSkillTool,
-)
-from openhands.sdk.tool.builtins.switch_llm import (
-    SwitchLLMAction,
-    SwitchLLMExecutor,
-    SwitchLLMObservation,
-    SwitchLLMTool,
 )
 from openhands.sdk.tool.builtins.think import (
     ThinkAction,
@@ -61,12 +49,10 @@ BUILT_IN_TOOL_CLASSES = {
     **{tool.__name__: tool for tool in BUILT_IN_TOOLS},
     ThinkTool.__name__: ThinkTool,
     InvokeSkillTool.__name__: InvokeSkillTool,
-    SwitchLLMTool.__name__: SwitchLLMTool,
     VisionInspectTool.__name__: VisionInspectTool,
-    ClassifyAndSwitchLLMTool.__name__: ClassifyAndSwitchLLMTool,
 }
 
-BUILT_IN_TOOLS_WITH_PARAMS = frozenset({ClassifyAndSwitchLLMTool.__name__})
+BUILT_IN_TOOLS_WITH_PARAMS: frozenset[str] = frozenset()
 
 
 def builtin_tool_class(name: str) -> type[ToolDefinition] | None:
@@ -83,10 +69,6 @@ __all__ = [
     "BUILT_IN_TOOL_CLASSES",
     "BUILT_IN_TOOLS_WITH_PARAMS",
     "builtin_tool_class",
-    "ClassifyAndSwitchLLMTool",
-    "ClassifyAndSwitchLLMAction",
-    "ClassifyAndSwitchLLMObservation",
-    "ClassifyAndSwitchLLMExecutor",
     "FinishTool",
     "FinishAction",
     "FinishObservation",
@@ -95,10 +77,6 @@ __all__ = [
     "InvokeSkillAction",
     "InvokeSkillObservation",
     "InvokeSkillExecutor",
-    "SwitchLLMTool",
-    "SwitchLLMAction",
-    "SwitchLLMObservation",
-    "SwitchLLMExecutor",
     "ThinkTool",
     "ThinkAction",
     "ThinkObservation",
