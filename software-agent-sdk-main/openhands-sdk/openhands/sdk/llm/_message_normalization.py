@@ -1,5 +1,4 @@
-from litellm import ResponseFunctionToolCall
-from litellm.types.responses.main import OutputFunctionToolCall
+from openhands.sdk.llm.native_types import ResponseFunctionToolCall, OutputFunctionToolCall
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 
