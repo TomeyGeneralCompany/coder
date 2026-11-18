@@ -263,7 +263,10 @@ class LLM(BaseModel):
         chars = len(json.dumps(
             {"messages": source, "tools": definitions}, ensure_ascii=False
         ).encode("utf-8"))
-        return max(1, chars + 256 + 32 * len(source))
+        # A conservative estimate without silently declaring an empty request.
+        # Inflate approximate UTF-8 token count for tool-schema overhead, but
+        # do not treat every raw byte as an entire token.
+        return max(1, math.ceil(chars / 2) + 256 + 32 * len(source))
 
     def _client(self) -> NativeOllamaClient:
         return NativeOllamaClient(
