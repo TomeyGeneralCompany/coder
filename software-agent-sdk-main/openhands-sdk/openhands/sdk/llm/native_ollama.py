@@ -6,10 +6,8 @@ by OpenHands and use stable, explicit fields for tool calls and usage.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import secrets
-import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator
 from urllib.parse import urlsplit
@@ -211,7 +209,7 @@ class NativeOllamaClient:
 
     def models(self) -> dict[str, Any]:
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=self.timeout, trust_env=False) as client:
                 response = client.get(self.url + "/api/tags")
                 self._raise_status(response)
                 return response.json()
@@ -262,7 +260,7 @@ class NativeOllamaClient:
         payload = self._request(messages, num_ctx=num_ctx, num_predict=num_predict,
                                 tools=tools, temperature=temperature)
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                 response = await client.post(self.url + "/api/chat", json=payload)
                 self._raise_status(response)
                 return _complete(response.json())
