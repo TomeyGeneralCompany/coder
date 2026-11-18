@@ -20,7 +20,7 @@ from jsonschema.exceptions import (
     SchemaError,
     ValidationError as JSONSchemaValidationError,
 )
-from litellm import (
+from openhands.sdk.llm.native_types import (
     ChatCompletionToolParam,
     ChatCompletionToolParamFunctionChunk,
 )
