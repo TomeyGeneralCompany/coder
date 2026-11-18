@@ -170,10 +170,8 @@ def pseudonymize(value: str | bytes, salt: str | bytes | None) -> str:
 
 @lru_cache(maxsize=1)
 def _known_providers() -> frozenset[str]:
-    """Provider names, sourced from litellm rather than hand-maintained."""
-    from litellm import provider_list
-
-    return frozenset(str(getattr(p, "value", p)).lower() for p in provider_list)
+    """The only inference provider available to local Coder."""
+    return frozenset({"ollama"})
 
 
 # Model *family*, which litellm has no concept of: it models providers, and the
