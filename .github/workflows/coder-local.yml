@@ -7,9 +7,9 @@ on:
       - 'software-agent-sdk-main/uv.lock'
       - 'software-agent-sdk-main/openhands-sdk/pyproject.toml'
       - 'software-agent-sdk-main/openhands-tools/pyproject.toml'
-      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/llm.py'
+      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/**'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/utils/local_only.py'
-      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/native_ollama.py'
+      - 'software-agent-sdk-main/openhands-agent-server/openhands/agent_server/llm_router.py'
   push:
     branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification, coder-native-ollama-remove-litellm]
     paths:
