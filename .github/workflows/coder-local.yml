@@ -44,6 +44,9 @@ jobs:
                   if matches:
                       print(f"{file.relative_to(root)}: "+", ".join(matches[:7]))
           PY
+      - name: Identify remaining hosted-provider call sites
+        run: |
+          grep -RnE --include='*.py' 'register_managed_llm_key_refresh|provider_connection_id|ProviderConnectionStore|create_subscription_llm_from_config|ClassifyAndSwitchLLMTool|SwitchLLMTool' software-agent-sdk-main/openhands-sdk/openhands software-agent-sdk-main/openhands-agent-server/openhands | head -140 || true
       - name: Syntax check local runtime
         run: python -m compileall -q software-agent-sdk-main/coder_local
       - name: Test native adapter and controller
