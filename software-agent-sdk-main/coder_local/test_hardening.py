@@ -80,10 +80,8 @@ class CheckpointTests(unittest.TestCase):
     def test_missing_test_command_is_blocked(self):
         job = Job(project=str(self.project), objective="Edit main", allowed_paths=["src"])
         self.store.save("missing-test", job)
-        from coder_local.bridge import OllamaBridge
-        with patch.object(OllamaBridge, "ensure_model"), patch.object(
-            OllamaBridge, "start", return_value="http://127.0.0.1:9999/v1"
-        ), patch.object(OllamaBridge, "stop"):
+        from openhands.sdk.llm.native_ollama import NativeOllamaClient
+        with patch.object(NativeOllamaClient, "ensure_model", return_value=32768), patch.object(NativeOllamaClient, "show", return_value={"model_info": {}}):
             result = self.controller.run("missing-test")
         self.assertEqual(result.stage, "blocked")
         self.assertEqual(result.verification["status"], "unverified")
@@ -152,7 +150,7 @@ class SandboxBoundaryTests(unittest.TestCase):
             store = JobStore(state)
             controller = Controller(Settings(), store)
             bridge = MagicMock()
-            bridge.url = "http://127.0.0.1:9010/v1"
+            bridge.url = "http://127.0.0.1:9010"
             job = Job(project=str(project), objective="Edit", allowed_paths=["src"])
             with StagedWorkspace(project, store.root, ["src"]) as stage:
                 job._execution_workspace = str(stage.path)

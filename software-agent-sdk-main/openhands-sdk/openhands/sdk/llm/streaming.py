@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from litellm.types.utils import ModelResponseStream
+from openhands.sdk.llm.native_types import StreamChunk as ModelResponseStream
 
 
 # Type alias for stream chunks

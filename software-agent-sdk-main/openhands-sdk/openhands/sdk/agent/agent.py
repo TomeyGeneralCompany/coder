@@ -73,7 +73,6 @@ from openhands.sdk.llm.exceptions import (
     LLMContextWindowExceedError,
     LLMMalformedConversationHistoryError,
 )
-from openhands.sdk.llm.router.base import RouterLLM
 from openhands.sdk.logger import get_logger
 from openhands.sdk.observability.laminar import (
     maybe_init_laminar,
@@ -230,8 +229,6 @@ _replace_latest_user_images_with_references = _replace_images_with_references
 def _should_handle_non_multimodal_image_input(
     llm: LLM, messages: list[Message]
 ) -> bool:
-    if isinstance(llm, RouterLLM):
-        return False
     return _messages_contain_image(messages) and not llm.vision_is_active()
 
 
@@ -1761,17 +1758,9 @@ class Agent(CriticMixin, ResponseDispatchMixin, AgentBase):
     def _maybe_emit_vllm_tokens(
         self, llm_response: LLMResponse, on_event: ConversationCallbackType
     ) -> None:
-        if (
-            "return_token_ids" in self.llm.litellm_extra_body
-        ) and self.llm.litellm_extra_body["return_token_ids"]:
-            token_event = TokenEvent(
-                source="agent",
-                prompt_token_ids=llm_response.raw_response["prompt_token_ids"],
-                response_token_ids=llm_response.raw_response["choices"][0][
-                    "provider_specific_fields"
-                ]["token_ids"],
-            )
-            on_event(token_event)
+        # Qwen's native Ollama interface does not expose vLLM token IDs.
+        # Ordinary token-stream callbacks continue through StreamContext.
+        return
 
     def _log_context_window_exceeded_warning(self) -> None:
         """Log a helpful warning when context window is exceeded without a condenser."""

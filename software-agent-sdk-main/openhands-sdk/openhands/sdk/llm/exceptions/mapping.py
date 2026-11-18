@@ -1,78 +1,24 @@
+"""Map local Ollama failures to existing OpenHands agent recovery types."""
 from __future__ import annotations
 
-from litellm.exceptions import (
-    APIConnectionError,
-    BadRequestError,
-    InternalServerError,
-    RateLimitError,
-    ServiceUnavailableError,
-    Timeout as LiteLLMTimeout,
-)
-
-from .classifier import (
-    is_content_policy_violation,
-    is_context_window_exceeded,
-    looks_like_auth_error,
-    looks_like_malformed_conversation_history_error,
+from openhands.sdk.llm.native_ollama import (
+    OllamaConnectionError, OllamaContextError,
+    OllamaModelNotFoundError, OllamaResponseError,
+    OllamaTimeoutError,
 )
 from .types import (
-    LLMAuthenticationError,
-    LLMBadRequestError,
-    LLMContentPolicyViolationError,
-    LLMContextWindowExceedError,
-    LLMMalformedConversationHistoryError,
-    LLMRateLimitError,
-    LLMServiceUnavailableError,
-    LLMTimeoutError,
+    LLMBadRequestError, LLMContextWindowExceedError,
+    LLMResponseError, LLMServiceUnavailableError, LLMTimeoutError,
 )
 
 
 def map_provider_exception(exception: Exception) -> Exception:
-    """
-    Map provider/LiteLLM exceptions to SDK-typed exceptions.
-
-    Returns original exception if no mapping applies.
-    """
-    # Context window exceeded first (highest priority among normal retries)
-    if is_context_window_exceeded(exception):
+    if isinstance(exception, OllamaContextError):
         return LLMContextWindowExceedError(str(exception))
-
-    # Malformed prompt history is distinct from context-window exhaustion even
-    # though the recovery path still uses condensation.
-    if looks_like_malformed_conversation_history_error(exception):
-        return LLMMalformedConversationHistoryError(str(exception))
-
-    # Auth-like errors often appear as BadRequest/OpenAIError with specific text
-    if looks_like_auth_error(exception):
-        return LLMAuthenticationError(str(exception))
-
-    if isinstance(exception, RateLimitError):
-        return LLMRateLimitError(str(exception))
-
-    if isinstance(exception, LiteLLMTimeout):
+    if isinstance(exception, OllamaTimeoutError):
         return LLMTimeoutError(str(exception))
-
-    # Connectivity and service-side availability issues → service unavailable
-    if isinstance(
-        exception, (APIConnectionError, ServiceUnavailableError, InternalServerError)
-    ):
+    if isinstance(exception, (OllamaConnectionError, OllamaModelNotFoundError)):
         return LLMServiceUnavailableError(str(exception))
-
-    # Content-policy blocks are deterministic 4xx; distinguish them from generic
-    # bad requests so the agent can recover softly instead of hard-erroring.
-    if is_content_policy_violation(exception):
-        return LLMContentPolicyViolationError(str(exception))
-
-    # Generic client-side 4xx errors
-    if isinstance(exception, BadRequestError):
-        # Temporary SGLang fallback until the LiteLLM fix ships and is verified:
-        # https://github.com/BerriAI/litellm/pull/48837 (issue #48836).
-        # Remove this branch once our LiteLLM dependency includes that fix.
-        if "Requested token count exceeds the model's maximum context length" in str(
-            exception
-        ):
-            return LLMContextWindowExceedError(str(exception))
-        return LLMBadRequestError(str(exception))
-
-    # Unknown: let caller re-raise original
+    if isinstance(exception, OllamaResponseError):
+        return LLMResponseError(str(exception))
     return exception

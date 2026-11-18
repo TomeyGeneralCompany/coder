@@ -1,30 +1,4 @@
-"""Authentication module for LLM subscription-based access.
+"""Local Qwen runtime has no hosted AI authentication."""
+from .openai import create_subscription_llm_from_config
 
-This module provides OAuth-based authentication for LLM providers that support
-subscription-based access (e.g., ChatGPT Plus/Pro for OpenAI Codex models).
-"""
-
-from openhands.sdk.llm.auth.credentials import (
-    CredentialStore,
-    OAuthCredentials,
-)
-from openhands.sdk.llm.auth.openai import (
-    OPENAI_CODEX_MODELS,
-    OpenAISubscriptionAuth,
-    SupportedVendor,
-    create_subscription_llm_from_config,
-    inject_system_prefix,
-    transform_for_subscription,
-)
-
-
-__all__ = [
-    "CredentialStore",
-    "OAuthCredentials",
-    "OpenAISubscriptionAuth",
-    "OPENAI_CODEX_MODELS",
-    "SupportedVendor",
-    "create_subscription_llm_from_config",
-    "inject_system_prefix",
-    "transform_for_subscription",
-]
+__all__ = ["create_subscription_llm_from_config"]

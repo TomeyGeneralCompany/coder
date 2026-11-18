@@ -12,7 +12,7 @@ import re
 from collections.abc import Iterable
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 
-from litellm import ChatCompletionToolParam, ChatCompletionToolParamFunctionChunk
+from openhands.sdk.llm.native_types import ChatCompletionToolParam, ChatCompletionToolParamFunctionChunk
 
 from openhands.sdk.llm.exceptions import (
     FunctionCallConversionError,

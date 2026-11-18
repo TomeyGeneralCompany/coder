@@ -26,11 +26,7 @@ from openhands.sdk.io import FileStore, LocalFileStore
 from openhands.sdk.llm import (
     LLM,
     LLM_PROFILE_SCHEMA_VERSION,
-    DecisionModel,
-    DecisionResult,
-    FallbackStrategy,
     ImageContent,
-    LLMProfileStore,
     LLMRegistry,
     LLMStreamChunk,
     Message,
@@ -121,13 +117,9 @@ _print_banner(__version__)
 
 __all__ = [
     "LLM",
-    "DecisionModel",
-    "DecisionResult",
     "LLM_PROFILE_SCHEMA_VERSION",
     "LLMRegistry",
-    "LLMProfileStore",
     "LLMStreamChunk",
-    "FallbackStrategy",
     "TokenCallbackType",
     "TokenUsage",
     "ConversationStats",

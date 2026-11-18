@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from coder_local.bridge import OllamaBridge
+from openhands.sdk.llm.native_ollama import NativeOllamaClient
 from coder_local.controller import Controller, Job, JobStore, Settings
 
 
@@ -28,17 +28,8 @@ class ControllerFlowTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    @staticmethod
-    def fake_model_ready():
-        with patch.object(OllamaBridge, "ensure_model"), patch.object(
-            OllamaBridge, "start", return_value="http://127.0.0.1:9999/v1"
-        ), patch.object(OllamaBridge, "stop"):
-            yield
-
     def run_with_stub(self, stub):
-        with patch.object(OllamaBridge, "ensure_model"), patch.object(
-            OllamaBridge, "start", return_value="http://127.0.0.1:9999/v1"
-        ), patch.object(OllamaBridge, "stop"), patch.object(
+        with patch.object(NativeOllamaClient, "ensure_model", return_value=32768), patch.object(
             Controller, "_ask_agent", side_effect=stub
         ):
             return Controller(self.settings, self.store).run("job")

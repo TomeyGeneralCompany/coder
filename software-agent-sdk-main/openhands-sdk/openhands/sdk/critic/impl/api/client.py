@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from typing import Annotated, Any, cast
 
 import httpx
-from litellm import ChatCompletionToolParam
+from openhands.sdk.llm.native_types import ChatCompletionToolParam
 from pydantic import (
     BaseModel,
     ConfigDict,

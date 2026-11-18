@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 import httpx
 import websockets
-from litellm.types.utils import Delta, ModelResponseStream, StreamingChoices
+from openhands.sdk.llm.native_types import Delta, StreamChunk as ModelResponseStream, StreamingChoice as StreamingChoices
 from websockets.exceptions import ConnectionClosed
 
 from openhands.sdk.agent.base import AgentBase

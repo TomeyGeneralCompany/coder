@@ -4,10 +4,14 @@ on:
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
-      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/llm.py'
+      - 'software-agent-sdk-main/uv.lock'
+      - 'software-agent-sdk-main/openhands-sdk/pyproject.toml'
+      - 'software-agent-sdk-main/openhands-tools/pyproject.toml'
+      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/**'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/utils/local_only.py'
+      - 'software-agent-sdk-main/openhands-agent-server/openhands/agent_server/llm_router.py'
   push:
-    branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification]
+    branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification, coder-native-ollama-remove-litellm]
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
@@ -20,12 +24,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
+      - name: Install uv
+        run: python -m pip install uv
+      - name: Install pinned SDK runtime
+        working-directory: software-agent-sdk-main
+        run: uv sync --frozen --no-dev
+      - name: Audit LiteLLM imports pending replacement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root=Path("software-agent-sdk-main")
+          for directory in ["openhands-sdk/openhands","openhands-tools/openhands","openhands-workspace/openhands","openhands-agent-server/openhands","coder_local"]:
+              for file in sorted((root/directory).rglob("*.py")):
+                  matches=[f"{i}:{line.strip()[:120]}" for i,line in enumerate(file.read_text(errors="replace").splitlines(),1) if "litellm" in line.lower()]
+                  if matches:
+                      print(f"{file.relative_to(root)}: "+", ".join(matches[:7]))
+          PY
       - name: Syntax check local runtime
         run: python -m compileall -q software-agent-sdk-main/coder_local
       - name: Test native adapter and controller
         working-directory: software-agent-sdk-main
-        run: python -m unittest -v coder_local.test_local coder_local.test_server coder_local.test_controller_flow coder_local.test_hardening
+        run: uv run --no-sync python -m unittest -v coder_local.test_server coder_local.test_controller_flow coder_local.test_hardening
   sdk-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -39,12 +59,18 @@ jobs:
       - name: Install pinned SDK dependencies
         working-directory: software-agent-sdk-main
         run: uv sync --frozen --no-dev
+      - name: Show remaining indirect LiteLLM dependency parents
+        working-directory: software-agent-sdk-main
+        run: uv tree --invert --package litellm || true
+      - name: Prove LiteLLM is not installed
+        working-directory: software-agent-sdk-main
+        run: uv run --no-sync python -c "import importlib.util; assert importlib.util.find_spec('litellm') is None, 'LiteLLM still installed'"
       - name: Test actual SDK local-only transport
         working-directory: software-agent-sdk-main
         env:
           ALLOW_SHORT_CONTEXT_WINDOWS: '1'
           DO_NOT_TRACK: '1'
-        run: uv run --no-sync python -m unittest -v coder_local.test_sdk_integration
+        run: uv run --no-sync python -m unittest -v coder_local.test_sdk_integration coder_local.test_native_ollama
   sandbox-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25

@@ -1,9 +1,8 @@
 # Coder: local Qwen development runner
 
-This is a **local-only** runtime for the OpenHands Software Agent SDK. It uses a
-loopback adapter to send OpenHands chat/tool requests to Ollama's native
-`/api/chat` endpoint, allowing the stage controller to set `num_ctx` on each
-operation. It does not configure or fall back to any hosted AI service.
+This is a **local-only** runtime for the OpenHands Software Agent SDK. The OpenHands model client communicates directly with
+Ollama's native `/api/chat` endpoint, allowing the controller to set
+`num_ctx` on every operation. It does not configure or fall back to any hosted AI service.
 
 ## Requirements
 
@@ -24,7 +23,7 @@ uv run python -m coder_local run --project "$HOME/my-website" \
 The command returns the assignment id and stage. Inspect saved state without
 invoking a model with `uv run python -m coder_local status --id <id>`.
 When an operation is interrupted, **Coder does not replay it automatically**.
-Inspect the project and checkpoint, then explicitly reconcile a unchanged
+Inspect the project and checkpoint, then explicitly reconcile an unchanged
 project with `uv run python -m coder_local reconcile --id <id>`, followed by
 `uv run python -m coder_local resume --id <id>`. Reconciliation refuses when
 project files differ from the pre-operation checkpoint.
@@ -48,12 +47,13 @@ The default maximum candidate context is 32,768 tokens; set
 32K, and 64K allocations up to the configured cap, with model request
 options transmitted to Ollama natively.
 
-Coder sets `CODER_LOCAL_ONLY=1` inside its worker. The SDK enforces the
-loopback Qwen3:4B model and rejects hosted model names, remote endpoints,
-provider connections, subscriptions, AWS model credentials and LLM fallbacks.
-Coder clears inherited environment variables in the worker. Upstream SDK
-provider implementation modules and shared LiteLLM dependencies remain
-present; the provider paths are disabled for Coder, not physically deleted.
+Coder initializes only native `qwen3:4b` inference on loopback; there
+is no LiteLLM transport, dependency, or OpenAI-compatible bridge. Host-model
+credentials, proxy fallback, and alternative models are not accepted by the
+native `LLM` constructor. The sandboxed worker clears inherited environment
+variables and forbids external provider selection. Some upstream SDK settings
+and profile compatibility code remains for reading older configuration formats;
+this is not an active inference path.
 
 ## Local dashboard and queue
 

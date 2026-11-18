@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from litellm.types.utils import ModelResponse
+from openhands.sdk.llm.native_types import ModelResponse
 
 from openhands.sdk.llm.exceptions import LLMResponseError
 from openhands.sdk.llm.utils.metrics import Metrics

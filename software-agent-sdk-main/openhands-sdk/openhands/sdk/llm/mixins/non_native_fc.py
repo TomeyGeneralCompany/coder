@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, TypeGuard
 
-from litellm import ChatCompletionToolParam, Message as LiteLLMMessage
-from litellm.types.utils import Choices, ModelResponse, StreamingChoices
+from openhands.sdk.llm.native_types import ChatCompletionToolParam, NativeMessage as LiteLLMMessage, Choice as Choices, ModelResponse, StreamingChoice as StreamingChoices
 
 from openhands.sdk.llm._message_normalization import NonNativeMessageMetadata
 from openhands.sdk.llm.exceptions import LLMNoResponseError
