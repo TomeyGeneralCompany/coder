@@ -1,10 +1,9 @@
 """HTTP endpoints for managing named LLM configurations (profiles)."""
 
-import asyncio
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Request, status
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from openhands.agent_server._secrets_exposure import (
     build_expose_context,
@@ -17,14 +16,11 @@ from openhands.agent_server.dependencies import (
     get_agent_profile_store,
     get_cipher,
     get_llm_profile_store,
-    get_provider_connections_store,
     get_settings_store,
 )
 from openhands.agent_server.persistence import (
     FileSettingsStore,
     PersistedSettings,
-    ProviderConnectionStore,
-    run_store,
 )
 from openhands.sdk.errors import Conflict, NotFound, OperationFailed
 from openhands.sdk.llm import LLM, Message, TextContent
@@ -96,10 +92,7 @@ class ProfileMutationResponse(BaseModel):
 
 class SaveProfileRequest(BaseModel):
     llm: LLM
-    include_secrets: bool = Field(
-        default=True,
-        description="Whether to persist the API key with the profile.",
-    )
+    include_secrets: bool = Field(default=False, description="Legacy compatibility only; native Qwen does not use API keys.")
 
 
 class RenameProfileRequest(BaseModel):
@@ -109,31 +102,6 @@ class RenameProfileRequest(BaseModel):
         max_length=64,
         pattern=PROFILE_NAME_PATTERN,
     )
-
-
-def _has_api_key(llm: LLM) -> bool:
-    if not isinstance(llm.api_key, SecretStr):
-        return False
-    return bool(llm.api_key.get_secret_value().strip())
-
-
-def _profile_api_key_set(
-    provider_connections: ProviderConnectionStore, cipher: Cipher | None, llm: LLM
-) -> bool:
-    """Effective key presence: the profile's own key, or its provider's.
-
-    A profile linked to a provider connection carries no inline key (cleared on
-    save), so its key presence lives on the connection.
-    """
-    if _has_api_key(llm):
-        return True
-    connection_id = llm.provider_connection_id
-    if not connection_id:
-        return False
-    # The provider store read can raise on a corrupted file; map it instead of
-    # letting it surface as an unhandled 500 on GET /profiles/{name}.
-    connection = provider_connections.get(connection_id, cipher=cipher)
-    return connection is not None and connection.api_key_value() is not None
 
 
 def _set_active_profile_if_matches(
@@ -183,9 +151,6 @@ def get_profile(
     request: Request,
     name: ProfileName,
     store: LLMProfileStore = Depends(get_llm_profile_store),
-    provider_connections: ProviderConnectionStore = Depends(
-        get_provider_connections_store
-    ),
     cipher: Cipher | None = Depends(get_cipher),
 ) -> ProfileDetailResponse:
     """Get a profile's configuration.
@@ -196,29 +161,17 @@ def get_profile(
       for backend clients constructing a runnable LLM configuration
     - (absent): Returns nulled ``api_key`` with ``api_key_set`` indicator
     """
-    expose_mode = parse_expose_secrets_header(request)
-
+    # All native Qwen profile fields are non-secret. Legacy profile files
+    # remain readable on disk but are refused by the profile loader.
     try:
-        # Runtime reads need current provider credentials. Editor reads
-        # retain the stored reference, including dangling references.
-        llm = store.load(
-            name, cipher=cipher, resolve_provider=expose_mode == "plaintext"
-        )
+        llm = store.load(name, cipher=cipher)
     except FileNotFoundError:
         raise NotFound(f"Profile '{name}' not found")
 
-    if expose_mode:
-        context = build_expose_context(expose_mode, cipher)
-        with translate_missing_cipher():
-            config: dict[str, Any] = llm.model_dump(mode="json", context=context)
-    else:
-        config = llm.model_dump(mode="json")
-        config["api_key"] = None
-
     return ProfileDetailResponse(
         name=name,
-        config=config,
-        api_key_set=_profile_api_key_set(provider_connections, cipher, llm),
+        config=llm.to_persisted(),
+        api_key_set=False,
     )
 
 
@@ -244,7 +197,7 @@ def save_profile(
     Clients can submit cipher-encrypted secrets which will be decrypted
     server-side before re-encrypting with the storage cipher.
     """
-    llm = decrypt_incoming_llm_secrets(body.llm, cipher) if cipher else body.llm
+    llm = body.llm  # Local Qwen has no LLM provider credentials.
     try:
         store.save(
             name,
@@ -309,9 +262,7 @@ def _preflight_llm(llm: LLM) -> LLM:
     timeout = PREFLIGHT_TIMEOUT_SECONDS
     if llm.timeout is not None:
         timeout = min(llm.timeout, timeout)
-    return llm.model_copy(
-        update={"num_retries": 0, "timeout": timeout, "fallback_strategy": None}
-    )
+    return llm.model_copy(update={"num_retries": 0, "timeout": timeout})
 
 
 def _invalid(name: str, exc: LLMError) -> ValidateProfileResponse:
@@ -349,12 +300,7 @@ async def validate_profile(
     misconfigured profile. A 429 that reports an exhausted budget or quota is
     not transient and fails the validation.
     """
-    llm = decrypt_incoming_llm_secrets(body.llm, cipher) if cipher else body.llm
-    # Check a draft linked to a provider connection with the connection's
-    # credentials, as activation and ``switch_llm`` run it. No-op without
-    # ``provider_connection_id``; a dangling link is a 422 naming it.
-    llm = await run_store(store.resolve_provider_connection, llm, cipher=cipher)
-
+    llm = body.llm
     messages = [
         Message(
             role="system",
@@ -367,29 +313,10 @@ async def validate_profile(
     ]
 
     try:
-        # Restore runtime subscription credentials, mirroring ``from_persisted``.
-        # The frontend sends auth_type="subscription" but the OAuth access token
-        # lives in the credential store, not in the serialized LLM config. Without
-        # this, the pre-flight sends api_key=None and fails with
-        # "Incorrect API key provided: None".
-        #
-        # Run the synchronous factory (which may do a network token refresh)
-        # off the event loop and inside the handled path so credential errors
-        # surface as ``valid=False`` instead of a 500.
-        if getattr(llm, "auth_type", None) == "subscription":
-            from openhands.sdk.llm.auth.openai import (
-                create_subscription_llm_from_config,
-            )
-
-            llm = await asyncio.to_thread(create_subscription_llm_from_config, llm)
-
         llm = _preflight_llm(llm)
-        # Mirror the runtime dispatch (see ``LLM.agenerate``) and stay
-        # async so provider I/O doesn't pin the FastAPI event loop.
-        if llm.uses_responses_api():
-            await llm.aresponses(messages=messages, max_tokens=1)
-        else:
-            await llm.acompletion(messages=messages, max_tokens=1)
+        # Use Ollama's native completion path and never treat a hosted
+        # subscription or Responses API as an alternative inference route.
+        await llm.acompletion(messages=messages)
     except _TRANSIENT_ERROR_TYPES as exc:
         if is_quota_exhaustion_error(exc):
             return _invalid(name, exc)
