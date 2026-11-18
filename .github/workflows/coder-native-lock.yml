@@ -5,6 +5,7 @@ on:
     paths:
       - 'software-agent-sdk-main/pyproject.toml'
       - 'software-agent-sdk-main/openhands-sdk/pyproject.toml'
+      - 'software-agent-sdk-main/openhands-tools/pyproject.toml'
       - '.github/workflows/coder-native-lock.yml'
 permissions:
   contents: write
