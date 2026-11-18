@@ -48,7 +48,7 @@ jobs:
         run: |
           grep -RnE --include='*.py' 'register_managed_llm_key_refresh|provider_connection_id|ProviderConnectionStore|create_subscription_llm_from_config|ClassifyAndSwitchLLMTool|SwitchLLMTool' software-agent-sdk-main/openhands-sdk/openhands software-agent-sdk-main/openhands-agent-server/openhands | head -140 || true
       - name: Syntax check local runtime
-        run: python -m compileall -q software-agent-sdk-main/coder_local
+        run: python -m compileall -q software-agent-sdk-main/coder_local software-agent-sdk-main/openhands-sdk/openhands/sdk software-agent-sdk-main/openhands-agent-server/openhands/agent_server
       - name: Test native adapter and controller
         working-directory: software-agent-sdk-main
         run: uv run --no-sync python -m unittest -v coder_local.test_server coder_local.test_controller_flow coder_local.test_hardening
