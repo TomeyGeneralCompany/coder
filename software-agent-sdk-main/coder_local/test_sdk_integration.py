@@ -6,11 +6,13 @@ OpenHands Agent -> LLM -> local bridge -> native Ollama transport path.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -54,6 +56,33 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
 
 
 class OpenHandsTransportTest(unittest.TestCase):
+    def test_cloud_model_is_rejected_by_sdk_in_coder_mode(self):
+        from openhands.sdk import LLM
+        with patch.dict(os.environ, {"CODER_LOCAL_ONLY": "1"}):
+            with self.assertRaisesRegex(ValueError, "CODER_LOCAL_ONLY"):
+                LLM(
+                    model="openai/gpt-4o",
+                    base_url="http://127.0.0.1:9000/v1",
+                    api_key="cloud-not-permitted",
+                )
+            with self.assertRaisesRegex(ValueError, "CODER_LOCAL_ONLY"):
+                LLM(
+                    model="openai/qwen3:4b",
+                    base_url="https://api.openai.com/v1",
+                    api_key="cloud-not-permitted",
+                )
+
+    def test_local_model_is_allowed_by_sdk_in_coder_mode(self):
+        from openhands.sdk import LLM
+        with patch.dict(os.environ, {"CODER_LOCAL_ONLY": "1"}):
+            model = LLM(
+                model="openai/qwen3:4b",
+                base_url="http://127.0.0.1:9000/v1",
+                api_key="local-only",
+                max_input_tokens=8192,
+            )
+            self.assertEqual(model.model, "openai/qwen3:4b")
+
     def test_real_sdk_uses_native_context_and_finish_tool(self):
         from openhands.sdk import Agent, Conversation, LLM
         from openhands.sdk.conversation import get_agent_final_response
