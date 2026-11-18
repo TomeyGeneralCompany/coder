@@ -23,7 +23,7 @@ jobs:
         run: python -m compileall -q software-agent-sdk-main/coder_local
       - name: Test native adapter and controller
         working-directory: software-agent-sdk-main
-        run: python -m unittest -v coder_local.test_local coder_local.test_server
+        run: python -m unittest -v coder_local.test_local coder_local.test_server coder_local.test_controller_flow
   sdk-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25
