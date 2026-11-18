@@ -54,7 +54,7 @@ from openhands.sdk.mcp.config import (
 from openhands.sdk.plugin import PluginSource
 from openhands.sdk.subagent.schema import AgentDefinition
 from openhands.sdk.tool import Tool
-from openhands.sdk.tool.builtins import BUILT_IN_TOOLS, ClassifyAndSwitchLLMTool
+from openhands.sdk.tool.builtins import BUILT_IN_TOOLS
 from openhands.sdk.tool.defaults import (
     drop_retired_tool_switches,
     effective_builtin_class,
