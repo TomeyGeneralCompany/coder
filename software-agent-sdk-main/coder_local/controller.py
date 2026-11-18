@@ -448,6 +448,16 @@ class Controller:
         job = self.store.load(job_id)
         root = self._project(job)
         if job.stage == "complete":
+            if not (
+                job.verification.get("status") == "passed"
+                and bool(job.operations)
+                and all(task.get("status") == "verified" for task in job.operations)
+            ):
+                job.complete = False
+                self._transition(
+                    job_id, job, "blocked",
+                    "Previous completion lacks verified operation evidence",
+                )
             return job
         if job.stage == "blocked":
             return job
@@ -574,6 +584,10 @@ class Controller:
                         if job.operation_index == len(job.operations):
                             self._transition(job_id, job, "complete", "All operations verified")
                         else:
+                            upcoming = job.operations[job.operation_index]["instruction"]
+                            job.inspection = _inspection(
+                                root, job.objective + "\n" + upcoming
+                            )
                             self._transition(job_id, job, "implement", "Next bounded operation")
                     elif job.attempts >= self.settings.max_correction_rounds:
                         self._transition(job_id, job, "blocked", "Correction limit reached")
