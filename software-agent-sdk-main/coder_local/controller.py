@@ -363,6 +363,29 @@ class Controller:
             ):
                 raise RuntimeError(f"Change outside authorized paths: {path}")
 
+    def reconcile(self, job_id: str) -> Job:
+        """Explicit restart reconciliation; never automatically replay in-flight work.
+
+        The caller must inspect the previous operation before requesting reconciliation.
+        Automatic recovery is possible only when the project fingerprint is unchanged.
+        """
+        with self.store.execution_lock():
+            job = self.store.load(job_id)
+            if job.inflight is None:
+                raise ValueError("No interrupted operation to reconcile")
+            if _manifest(self._project(job)) != job.inflight["baseline"]:
+                raise RuntimeError(
+                    "Project changed during interrupted operation; manual review required"
+                )
+            original_stage = job.inflight["stage"]
+            if original_stage not in {"plan", "implement", "correct", "verify"}:
+                raise ValueError("Interrupted stage is not safe to reconcile")
+            job.inflight = None
+            job.last_error = ""
+            job.stage = original_stage
+            self.store.save(job_id, job)
+            return job
+
     def run(self, job_id: str, *, resume: bool = False) -> Job:
         with self.store.execution_lock():
             return self._run_locked(job_id, resume=resume)
