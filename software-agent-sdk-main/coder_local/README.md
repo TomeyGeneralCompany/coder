@@ -40,6 +40,25 @@ this Coder entry point uses **only** the loopback inference route. Removing
 shared upstream provider code without dependency and regression verification
 would risk breaking the working SDK.
 
+## Local dashboard and queue
+
+Start the local interface from `software-agent-sdk-main`:
+
+```bash
+uv run python -m coder_local.server
+```
+
+Open `http://127.0.0.1:8765` on the same machine. The dashboard can submit
+assignments, display the active stage, context size and verification status.
+Its API is bound to loopback only: `GET /health`, `GET /jobs`,
+`GET /jobs/<id>`, `POST /jobs`, and `POST /jobs/<id>/resume`. A single
+local worker handles queued assignments, and a Linux file lock prevents
+multiple processes from running Coder jobs simultaneously.
+
+Jobs are stored in `~/.local/share/coder/jobs` (outside project repositories).
+The controller sets `DO_NOT_TRACK=1` while running the SDK. External inference
+providers are neither listed nor selectable through this interface.
+
 ## Current limitations
 
 - The 64K profile is a candidate, not a confirmed context capacity of the
