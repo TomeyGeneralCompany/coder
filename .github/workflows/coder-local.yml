@@ -59,6 +59,9 @@ jobs:
       - name: Show remaining indirect LiteLLM dependency parents
         working-directory: software-agent-sdk-main
         run: uv tree --invert --package litellm || true
+      - name: Prove LiteLLM is not installed
+        working-directory: software-agent-sdk-main
+        run: uv run --no-sync python -c "import importlib.util; assert importlib.util.find_spec('litellm') is None, 'LiteLLM still installed'"
       - name: Test actual SDK local-only transport
         working-directory: software-agent-sdk-main
         env:
