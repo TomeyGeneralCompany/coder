@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Any
 
-from coder_local.controller import Controller, Job, JobStore, Settings
+from coder_local.controller import Controller, Job, JobStore, Settings, parse_test_command
 from coder_local.__main__ import DEFAULT_STATE_DIR
 from coder_local.workspace import clone_repository, console_command, project_directory
 
@@ -121,6 +121,7 @@ def create_server(
                 body = Path(__file__).with_name("index.html").read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Content-Length", str(len(body)))
@@ -188,6 +189,8 @@ def create_server(
                     if not objective:
                         raise ValueError("Objective is required")
                     test_command = data.get("test_command") or []
+                    if isinstance(test_command, str):
+                        test_command = parse_test_command(test_command)
                     allowed_paths = data.get("allowed_paths") or []
                     if not test_command or not isinstance(test_command, list) or not all(
                         isinstance(x, str) for x in test_command
