@@ -21,7 +21,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from coder_local.bridge import OllamaBridge
+from openhands.sdk.llm.native_ollama import NativeOllamaClient
 from coder_local.safety import StagedWorkspace, validate_scope, _manifest
 
 
@@ -47,7 +47,7 @@ class Settings:
     def validate(self) -> None:
         if self.model != "qwen3:4b":
             raise ValueError("Coder uses only the local qwen3:4b model")
-        OllamaBridge(model=self.model, ollama_url=self.ollama_url)
+        NativeOllamaClient(self.ollama_url, model=self.model)
         if not self.context_profiles or tuple(sorted(set(self.context_profiles))) != self.context_profiles:
             raise ValueError("context_profiles must be sorted, distinct, and nonempty")
         if self.max_context < self.context_profiles[0]:
@@ -287,7 +287,7 @@ class Controller:
         self.store.save(job_id, job)
 
     def _ask_agent(
-        self, bridge: OllamaBridge, job_id: str, job: Job,
+        self, bridge: NativeOllamaClient, job_id: str, job: Job,
         instruction: str, *, coding: bool,
     ) -> str:
         """Execute OpenHands inside a fail-closed read-only-host sandbox.
@@ -306,7 +306,6 @@ class Controller:
         job.context_tokens = ctx
         self.store.save(job_id, job)
         output_tokens = min(self.settings.output_tokens, ctx // 3)
-        bridge.configure(context_tokens=ctx, output_tokens=output_tokens)
 
         root = Path(__file__).resolve().parents[1]
         if coding:
@@ -330,7 +329,7 @@ class Controller:
         result_path = outputs / (request_path.name + ".result.json")
         request = {
             "model": self.settings.model,
-            "base_url": bridge.url,
+            "ollama_url": bridge.url,
             "context_tokens": ctx,
             "output_tokens": output_tokens,
             "timeout": self.settings.timeout_seconds,
@@ -469,22 +468,21 @@ class Controller:
             self._transition(job_id, job, "blocked", "Unreconciled checkpoint")
             return job
 
-        bridge = OllamaBridge(
+        bridge = NativeOllamaClient(
+            url=self.settings.ollama_url,
             model=self.settings.model,
-            ollama_url=self.settings.ollama_url,
-            timeout_seconds=self.settings.timeout_seconds,
+            timeout=self.settings.timeout_seconds,
         )
-        bridge.ensure_model()
-        if bridge.supported_context is not None:
+        supported_context = bridge.ensure_model()
+        if supported_context is not None:
             self.allocator.settings.max_context = min(
-                self.allocator.settings.max_context, bridge.supported_context
+                self.allocator.settings.max_context, supported_context
             )
             if self.allocator.settings.max_context < self.settings.context_profiles[0]:
                 raise RuntimeError("Installed Qwen context is below minimum profile")
             self.allocator.current = min(
                 self.allocator.current, self.allocator.settings.max_context
             )
-        bridge.url = bridge.start()
         try:
             while job.stage not in {"complete", "blocked"}:
                 stage = job.stage
@@ -609,7 +607,8 @@ class Controller:
             self.store.save(job_id, job)
             raise
         finally:
-            bridge.stop()
+            # Direct Ollama requests require no bridge server or resident thread.
+            pass
 
 
 def parse_test_command(command: str) -> list[str]:
