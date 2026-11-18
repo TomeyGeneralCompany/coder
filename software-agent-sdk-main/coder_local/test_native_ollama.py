@@ -36,7 +36,7 @@ class FakeOllama(BaseHTTPRequestHandler):
             parts = [
                 {"message": {"role": "assistant", "content": "Hi"}, "done": False},
                 {"message": {"role": "assistant", "content": " there"}, "done": False},
-                {"message": {"role": "assistant", "content": ""}, "done": True},
+                {"message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": 37, "eval_count": 13},
             ]
             body = "".join(json.dumps(part) + "\n" for part in parts).encode()
             self.send_response(200)
@@ -135,6 +135,7 @@ class NativeClientTests(unittest.TestCase):
         ))
         self.assertEqual("".join(x.content for x in deltas), "Hi there")
         self.assertTrue(deltas[-1].done)
+        self.assertEqual(deltas[-1].usage.total_tokens, 50)
 
     def test_async_stream(self):
         async def run():
@@ -145,6 +146,7 @@ class NativeClientTests(unittest.TestCase):
             )]
         deltas = asyncio.run(run())
         self.assertEqual("".join(x.content for x in deltas), "Hi there")
+        self.assertEqual(deltas[-1].usage.total_tokens, 50)
 
     def test_empty_response_cannot_fake_completion(self):
         from openhands.sdk.llm.native_ollama import _complete
