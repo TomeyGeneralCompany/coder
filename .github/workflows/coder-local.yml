@@ -1,0 +1,26 @@
+name: Coder local Qwen adapter checks
+on:
+  pull_request:
+    paths:
+      - 'software-agent-sdk-main/coder_local/**'
+      - '.github/workflows/coder-local.yml'
+  push:
+    branches: [coder-local-qwen-stage-gates]
+    paths:
+      - 'software-agent-sdk-main/coder_local/**'
+      - '.github/workflows/coder-local.yml'
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check local runtime
+        run: python -m compileall -q software-agent-sdk-main/coder_local
+      - name: Test native adapter and controller
+        working-directory: software-agent-sdk-main
+        run: python -m unittest -v coder_local.test_local
