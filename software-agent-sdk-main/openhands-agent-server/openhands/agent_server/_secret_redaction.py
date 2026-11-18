@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Final
 
-from openhands.sdk.llm.llm import LLM_SECRET_FIELDS
 from openhands.sdk.utils.cipher import FERNET_TOKEN_PREFIX
 from openhands.sdk.utils.pydantic_secrets import REDACTED_SECRET_VALUE
 
@@ -18,9 +17,24 @@ from openhands.sdk.utils.pydantic_secrets import REDACTED_SECRET_VALUE
 # payload (base_state.json, meta.json, events). Kept in sync with
 # ``LLM_SECRET_FIELDS`` and extended with the settings-level ``llm_api_key``
 # alias.
-TRAJECTORY_SECRET_FIELDS: frozenset[str] = frozenset(
-    (*LLM_SECRET_FIELDS, "llm_api_key")
-)
+# Keep old credential fields in export redaction even after removing cloud
+# inference. Historical event logs and settings may still contain them.
+TRAJECTORY_SECRET_FIELDS: frozenset[str] = frozenset({
+    "llm_api_key",
+    "api_key",
+    "openai_api_key",
+    "anthropic_api_key",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_session_token",
+    "subscription_access_token",
+    "access_token",
+    "refresh_token",
+    "client_secret",
+    "token",
+    "password",
+})
+
 
 # Suffix of newline-delimited JSON files: one JSON document per line.
 _JSON_LINES_SUFFIX: Final[str] = ".jsonl"
