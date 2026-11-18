@@ -33,10 +33,9 @@ class FakeOllama(BaseHTTPRequestHandler):
             str(m.get("content", "")) for m in messages if m.get("role") == "user"
         )
         finish = next((name for name in tools if "finish" in name.lower()), None)
-        editor = next((name for name in tools if "fileeditor" in name.lower()), None)
+        editor = next((name for name in tools if "file" in name.lower() and "editor" in name.lower()), None)
         if not finish:
-            self.reply({"message": {"role": "assistant", "content": "Cannot finish"}})
-            return
+            raise RuntimeError("No finish tool schema: " + repr(tools))
         if "Break the authorized assignment" in user_text:
             call = {
                 "name": finish,
