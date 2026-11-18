@@ -5,6 +5,7 @@ against the user-selected project, never against Coder's own source by default.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -145,6 +146,27 @@ def _inspection(root: Path, objective: str) -> str:
     return "\n".join(fragments)[:20000]
 
 
+def _snapshot_files(root: Path) -> dict[str, str]:
+    """Capture file contents before a coding stage, including already-dirty files."""
+    result: dict[str, str] = {}
+    for current, dirs, files in os.walk(root, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in {
+            ".git", ".venv", "node_modules", "__pycache__", "dist", "build",
+        }]
+        for name in files:
+            path = Path(current) / name
+            relative = path.relative_to(root).as_posix()
+            try:
+                if path.is_symlink():
+                    data = os.readlink(path).encode()
+                else:
+                    data = path.read_bytes()
+                result[relative] = hashlib.sha256(data).hexdigest()
+            except OSError:
+                continue
+    return result
+
+
 def _free_memory_mb() -> int | None:
     path = Path("/proc/meminfo")
     if not path.exists():
@@ -222,8 +244,7 @@ class Controller:
             output_tokens=min(self.settings.output_tokens, ctx // 3),
         )
         llm = LLM(
-            model="openai/qwen3:4b",
-            model_canonical_name="openai/gpt-4o",
+            model=f"openai/{self.settings.model}",
             base_url=bridge.url,
             api_key="local-only",
             api_mode="chat",
@@ -248,6 +269,7 @@ class Controller:
                 "Report actual results; never invent executed tests."
             ),
         )
+        (self.store.root / "conversations").mkdir(parents=True, exist_ok=True)
         conversation = Conversation(
             agent=agent,
             workspace=str(self._project(job)),
@@ -259,19 +281,13 @@ class Controller:
         response = get_agent_final_response(conversation.state.events)
         return str(response or "")
 
-    def _check_scope(self, job: Job, before: list[str]) -> None:
+    def _check_scope(self, job: Job, before: dict[str, str]) -> None:
         if not job.allowed_paths:
             return
-        root = self._project(job)
-        after_result = _run_command(
-            ["git", "status", "--porcelain", "--untracked-files=all"], root
-        )
-        if after_result["exit_code"] != 0:
-            raise RuntimeError("Scope enforcement requires a Git working tree")
-        after = after_result["stdout"].splitlines()
-        added = set(after) - set(before)
-        for entry in added:
-            path = entry[3:].split(" -> ")[-1].strip('"')
+        after = _snapshot_files(self._project(job))
+        for path in sorted(set(before) | set(after)):
+            if before.get(path) == after.get(path):
+                continue
             if not any(
                 path == allowed.rstrip("/")
                 or path.startswith(allowed.rstrip("/") + "/")
@@ -316,11 +332,7 @@ class Controller:
                     )[:12000]
                     self._transition(job_id, job, "implement", "Plan recorded")
                 elif stage in {"implement", "correct"}:
-                    before = _run_command(
-                        ["git", "status", "--porcelain", "--untracked-files=all"], root
-                    )
-                    if job.allowed_paths and before["exit_code"] != 0:
-                        raise RuntimeError("Scope enforcement requires Git")
+                    before = _snapshot_files(root) if job.allowed_paths else {}
                     prompt = (
                         f"Implement this authorized task in {root}.\n"
                         f"OBJECTIVE:\n{job.objective}\n"
@@ -332,7 +344,7 @@ class Controller:
                         "Do not commit, push, merge, or modify unrelated files."
                     )
                     self._ask_agent(bridge, job_id, job, prompt, coding=True)
-                    self._check_scope(job, before["stdout"].splitlines())
+                    self._check_scope(job, before)
                     self._transition(job_id, job, "verify", "Coding operation finished")
                 elif stage == "verify":
                     if not job.test_command:
