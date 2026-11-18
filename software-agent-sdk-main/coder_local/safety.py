@@ -47,6 +47,10 @@ def _digest(data: bytes) -> str:
 def _manifest(root: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for current, dirs, files in os.walk(root, followlinks=False):
+        for name in dirs:
+            if name not in EXCLUDE and (Path(current) / name).is_symlink():
+                relative = (Path(current) / name).relative_to(root).as_posix()
+                raise ValueError(f"Symbolic directory in project: {relative}")
         dirs[:] = sorted(d for d in dirs if d not in EXCLUDE)
         for name in files:
             p = Path(current) / name
@@ -73,7 +77,7 @@ class StagedWorkspace:
 
     def __enter__(self) -> "StagedWorkspace":
         self.baseline = _manifest(self.project)
-        self.temp = tempfile.TemporaryDirectory(prefix="coder-work-")
+        self.temp = tempfile.TemporaryDirectory(prefix="coder-work-", dir=self.state_root)
         self.path = Path(self.temp.name) / "project"
         try:
             shutil.copytree(
