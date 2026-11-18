@@ -3,9 +3,7 @@ from abc import abstractmethod
 from collections.abc import Iterable, Sequence
 from typing import Annotated, Any, ClassVar, Literal
 
-from litellm import ChatCompletionMessageToolCall, ResponseFunctionToolCall
-from litellm.types.responses.main import OutputFunctionToolCall
-from litellm.types.utils import Message as LiteLLMMessage
+from openhands.sdk.llm.native_types import ChatToolCall as ChatCompletionMessageToolCall, ResponseFunctionToolCall, OutputFunctionToolCall, NativeMessage as LiteLLMMessage
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from openhands.sdk.llm._message_normalization import (
