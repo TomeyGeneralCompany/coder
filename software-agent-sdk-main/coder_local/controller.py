@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from coder_local.bridge import OllamaBridge
+from coder_local.safety import StagedWorkspace, validate_scope, _manifest
 
 
 STAGES = ("intake", "inspect", "plan", "implement", "verify", "correct", "complete", "blocked")
@@ -67,6 +68,10 @@ class Job:
     history: list[dict[str, Any]] = field(default_factory=list)
     context_tokens: int = 8192
     complete: bool = False
+    operations: list[dict[str, Any]] = field(default_factory=list)
+    operation_index: int = 0
+    inflight: dict[str, Any] | None = None
+    verified_operations: list[str] = field(default_factory=list)
 
 
 class JobStore:
@@ -228,6 +233,37 @@ class Controller:
             raise ValueError(f"Project directory does not exist: {root}")
         return root
 
+    def _checkpoint(self, job_id: str, job: Job, action: str) -> None:
+        """Write intent before any model operation; never blindly replay it."""
+        job.inflight = {
+            "action": action,
+            "stage": job.stage,
+            "operation_index": job.operation_index,
+            "baseline": _manifest(self._project(job)),
+            "time": int(time.time()),
+        }
+        self.store.save(job_id, job)
+
+    def _clear_checkpoint(self, job_id: str, job: Job) -> None:
+        job.inflight = None
+        self.store.save(job_id, job)
+
+    @staticmethod
+    def _decode_plan(response: str) -> list[dict[str, Any]]:
+        """Require a bounded, explicit task list; malformed model output blocks."""
+        text = response.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^\x60{3}(?:json)?\\s*|\\s*\x60{3}$", "", text)
+        payload = json.loads(text)
+        if not isinstance(payload, list) or not 1 <= len(payload) <= 30:
+            raise ValueError("Plan must contain 1 to 30 operations")
+        tasks = []
+        for index, item in enumerate(payload):
+            if not isinstance(item, str) or not 1 <= len(item.strip()) <= 600:
+                raise ValueError("Each planned operation must be a brief string")
+            tasks.append({"id": f"step-{index+1:02d}", "instruction": item.strip(), "status": "pending"})
+        return tasks
+
     def _transition(self, job_id: str, job: Job, new_stage: str, note: str) -> None:
         if new_stage not in STAGES:
             raise ValueError(f"Unknown stage: {new_stage}")
@@ -297,7 +333,7 @@ class Controller:
         (self.store.root / "conversations").mkdir(parents=True, exist_ok=True)
         conversation = Conversation(
             agent=agent,
-            workspace=str(self._project(job)),
+            workspace=str(getattr(job, "_execution_workspace", self._project(job))),
             persistence_dir=str(self.store.root / "conversations"),
             max_iteration_per_run=self.settings.max_agent_iterations if coding else 3,
         )
@@ -336,7 +372,14 @@ class Controller:
         root = self._project(job)
         if job.stage == "complete":
             return job
-        if job.stage == "blocked" and not resume:
+        if job.stage == "blocked":
+            return job
+        if job.inflight is not None:
+            job.last_error = (
+                "Interrupted in-flight operation was not replayed. "
+                "Inspect project state and explicitly reconcile before continuing."
+            )
+            self._transition(job_id, job, "blocked", "Unreconciled checkpoint")
             return job
 
         bridge = OllamaBridge(
@@ -361,63 +404,100 @@ class Controller:
                 if stage == "intake":
                     if not job.objective.strip():
                         raise ValueError("Assignment objective is empty")
+                    validate_scope(job.allowed_paths)
+                    if not job.test_command:
+                        job.verification = {
+                            "status": "unverified", "reason": "Verification command required"
+                        }
+                        self._transition(job_id, job, "blocked", "Missing verification command")
+                        continue
                     self._transition(job_id, job, "inspect", "Assignment recorded")
                 elif stage == "inspect":
                     job.inspection = _inspection(root, job.objective)
                     self._transition(job_id, job, "plan", "Source inspected")
                 elif stage == "plan":
                     prompt = (
-                        "Prepare a concise implementation plan for the authorized "
-                        "assignment. Do not edit files.\n"
+                        "Break the authorized assignment into 1-30 small, ordered "
+                        "development operations. Return ONLY a JSON array of concise "
+                        "instruction strings. Each operation should be independently "
+                        "editable and testable. Do not edit files.\n"
                         f"OBJECTIVE:\n{job.objective}\nSCOPE:\n{job.allowed_paths}\n"
                         f"REPOSITORY:\n{job.inspection[:12000]}"
                     )
-                    job.planned_work = self._ask_agent(
-                        bridge, job_id, job, prompt, coding=False
-                    )[:12000]
-                    self._transition(job_id, job, "implement", "Plan recorded")
+                    self._checkpoint(job_id, job, "plan")
+                    response = self._ask_agent(bridge, job_id, job, prompt, coding=False)
+                    job.operations = self._decode_plan(response)
+                    job.planned_work = response[:12000]
+                    self._clear_checkpoint(job_id, job)
+                    self._transition(job_id, job, "implement", "Bounded work plan recorded")
                 elif stage in {"implement", "correct"}:
-                    before = _snapshot_files(root) if job.allowed_paths else {}
-                    prompt = (
-                        f"Implement this authorized task in {root}.\n"
-                        f"OBJECTIVE:\n{job.objective}\n"
-                        f"ALLOWED PATHS:\n{job.allowed_paths or ['project workspace']}\n"
-                        f"PLAN:\n{job.planned_work[:6500]}\n"
-                        f"RELEVANT SOURCE:\n{job.inspection[:6500]}\n"
-                        f"PREVIOUS TEST ERROR:\n{job.last_error[-4500:]}\n"
-                        "Make the changes using the supplied tools. "
-                        "Do not commit, push, merge, or modify unrelated files."
-                    )
-                    try:
-                        self._ask_agent(bridge, job_id, job, prompt, coding=True)
-                    finally:
-                        # Even a failed agent call may have modified project files.
-                        self._check_scope(job, before)
-                    self._transition(job_id, job, "verify", "Coding operation finished")
+                    if job.operation_index >= len(job.operations):
+                        self._transition(job_id, job, "blocked", "No pending operation")
+                        continue
+                    operation = job.operations[job.operation_index]
+                    self._checkpoint(job_id, job, operation["id"])
+                    with StagedWorkspace(root, self.store.root, job.allowed_paths) as staged:
+                        job._execution_workspace = str(staged.path)
+                        prompt = (
+                            f"Modify only the staged project at {staged.path}.\n"
+                            f"OVERALL OBJECTIVE:\n{job.objective[:1500]}\n"
+                            f"CURRENT OPERATION {operation['id']}:\n"
+                            f"{operation['instruction']}\n"
+                            f"AUTHORIZED PATHS:\n{job.allowed_paths}\n"
+                            f"RELEVANT SOURCE:\n{job.inspection[:4500]}\n"
+                            f"PREVIOUS TEST ERROR:\n{job.last_error[-3000:]}\n"
+                            "Make only this operation's changes. Do not commit, push, "
+                            "merge or edit any other file."
+                        )
+                        try:
+                            self._ask_agent(bridge, job_id, job, prompt, coding=True)
+                            changes = staged.changes()
+                            if not changes:
+                                raise RuntimeError("Operation produced no source changes")
+                            promoted = staged.promote()
+                        finally:
+                            del job._execution_workspace
+                    operation["modified_files"] = promoted
+                    operation["status"] = "implemented"
+                    self._clear_checkpoint(job_id, job)
+                    self._transition(job_id, job, "verify", "Staged edits promoted within scope")
                 elif stage == "verify":
                     if not job.test_command:
                         job.verification = {
-                            "status": "unverified",
-                            "reason": "No project test command supplied",
+                            "status": "unverified", "reason": "No verification command"
                         }
-                        self._transition(job_id, job, "complete", "Changes unverified")
+                        self._transition(job_id, job, "blocked", "Unverified assignment")
                         continue
+                    self._checkpoint(job_id, job, "verify")
                     result = _run_command(
                         job.test_command, root, timeout=self.settings.timeout_seconds
                     )
                     logs_dir = self.store.root / "logs"
                     logs_dir.mkdir(exist_ok=True)
-                    (logs_dir / f"{job_id}-verify.json").write_text(
-                        json.dumps(result, indent=2), encoding="utf-8"
+                    log_file = logs_dir / (
+                        f"{job_id}-step-{job.operation_index:02d}-"
+                        f"attempt-{job.attempts:02d}.json"
                     )
+                    log_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
                     job.verification = {
                         "status": "passed" if result["exit_code"] == 0 else "failed",
                         "exit_code": result["exit_code"],
                         "command": job.test_command,
-                        "log": f"logs/{job_id}-verify.json",
+                        "log": str(log_file.relative_to(self.store.root)),
+                        "operation_index": job.operation_index,
                     }
+                    self._clear_checkpoint(job_id, job)
                     if result["exit_code"] == 0:
-                        self._transition(job_id, job, "complete", "Tests passed")
+                        current = job.operations[job.operation_index]
+                        current["status"] = "verified"
+                        job.verified_operations.append(current["id"])
+                        job.operation_index += 1
+                        job.attempts = 0
+                        job.last_error = ""
+                        if job.operation_index == len(job.operations):
+                            self._transition(job_id, job, "complete", "All operations verified")
+                        else:
+                            self._transition(job_id, job, "implement", "Next bounded operation")
                     elif job.attempts >= self.settings.max_correction_rounds:
                         self._transition(job_id, job, "blocked", "Correction limit reached")
                     else:
@@ -425,10 +505,12 @@ class Controller:
                         job.last_error = (
                             result["stderr"][-3500:] + "\n" + result["stdout"][-3000:]
                         )
-                        self._transition(job_id, job, "correct", "Tests failed")
+                        self._transition(job_id, job, "correct", "Verification failed")
                 else:
                     self._transition(job_id, job, "blocked", "Unknown stage")
-            job.complete = job.stage == "complete"
+            job.complete = (job.stage == "complete" and bool(job.operations)
+                            and all(x["status"] == "verified" for x in job.operations)
+                            and job.verification.get("status") == "passed")
             self.store.save(job_id, job)
             return job
         except Exception as exc:
