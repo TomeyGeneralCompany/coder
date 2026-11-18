@@ -809,6 +809,11 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
 
     @model_validator(mode="after")
     def _post_init(self):
+        # Coder local mode rejects cloud and subscription routes at model creation,
+        # including models instantiated by auxiliary SDK components.
+        from openhands.sdk.llm.utils.local_only import enforce_local_only
+
+        enforce_local_only(self)
         # NOTE: AWS credentials and OpenRouter site/app identifiers are NOT
         # written to ``os.environ`` here. Doing so in a multi-tenant agent
         # server would let one conversation's credentials bleed into another
