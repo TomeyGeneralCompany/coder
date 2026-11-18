@@ -78,7 +78,7 @@ def create_server(
         raise ValueError("Coder HTTP API must bind to local loopback")
     settings.validate()
     jobs = JobQueue(settings, store)
-    projects_root = store.root.parent / 'projects'
+    projects_root = store.root.parent / "projects"
 
     class Handler(BaseHTTPRequestHandler):
         def _trusted_request(self) -> bool:
@@ -164,6 +164,11 @@ def create_server(
         def do_POST(self) -> None:
             if not self._trusted_request():
                 self._send(403, {"error": "Loopback browser origin required"})
+                return
+            # Cross-origin HTML forms cannot issue application/json POSTs;
+            # browsers require a CORS preflight, which this server never enables.
+            if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+                self._send(415, {"error": "JSON requests required"})
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
