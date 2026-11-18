@@ -91,6 +91,7 @@ class LLM(BaseModel):
     model: str = Field(default=MODEL)
     base_url: str = Field(default="http://127.0.0.1:11434")
     usage_id: str = Field(default="default")
+    model_canonical_name: str | None = None
     max_input_tokens: int = Field(default=8192, ge=1024)
     max_output_tokens: int = Field(default=1024, ge=1)
     max_message_chars: int = Field(default=4500, ge=1)
