@@ -75,7 +75,6 @@ from openhands.sdk.hooks import (
 )
 from openhands.sdk.io import FileStore, LocalFileStore
 from openhands.sdk.llm import LLM, Message, TextContent, content_to_str
-from openhands.sdk.llm.auth.openai import create_subscription_llm_from_config
 from openhands.sdk.llm.call_context import LLMCallContext, llm_call_context_scope
 from openhands.sdk.llm.exceptions import LLMAuthenticationError
 from openhands.sdk.llm.llm_profile_store import LLMProfileStore
@@ -2150,7 +2149,7 @@ class LocalConversation(BaseConversation):
         if registered is not None and _same_llm_config(registered, llm):
             new_llm = registered
         else:
-            new_llm = create_subscription_llm_from_config(llm)
+            new_llm = llm
             if registered is not None:
                 self.llm_registry.remove(usage_id)
             self.llm_registry.add(new_llm)
@@ -2212,7 +2211,6 @@ class LocalConversation(BaseConversation):
         except KeyError:
             loaded = self._profile_store.load(profile_name, cipher=self._cipher)
             llm = loaded.model_copy(update={"usage_id": usage_id})
-            llm = create_subscription_llm_from_config(llm)
             self.llm_registry.add(llm)
             return llm
 

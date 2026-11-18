@@ -27,7 +27,6 @@ from openhands.agent_server.persistence import (
     FileSecretsStore,
     FileSettingsStore,
     FileWorkspacesStore,
-    ProviderConnectionStore,
     ServerStores,
 )
 from openhands.agent_server.server_context import ServerContext, get_server_context
@@ -89,10 +88,6 @@ def get_settings_store(stores: _Stores) -> FileSettingsStore:
 
 def get_secrets_store(stores: _Stores) -> FileSecretsStore:
     return stores.secrets
-
-
-def get_provider_connections_store(stores: _Stores) -> ProviderConnectionStore:
-    return stores.provider_connections
 
 
 def get_workspaces_store(stores: _Stores) -> FileWorkspacesStore:

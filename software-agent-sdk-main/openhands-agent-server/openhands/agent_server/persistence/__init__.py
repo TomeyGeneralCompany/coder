@@ -29,11 +29,6 @@ from openhands.agent_server.persistence.store import (
     WorkspacesStore,
     reencrypt_stale_stores,
 )
-from openhands.sdk.llm.provider_connection_store import (
-    PersistedProviderConnections,
-    ProviderConnection,
-    ProviderConnectionStore,
-)
 
 
 __all__ = [
@@ -43,10 +38,8 @@ __all__ = [
     "WORKSPACES_SCHEMA_VERSION",
     # Models
     "CustomSecret",
-    "PersistedProviderConnections",
     "PersistedSettings",
     "PersistedWorkspaces",
-    "ProviderConnection",
     "Secrets",
     "SettingsUpdatePayload",
     "WorkspaceItem",
@@ -57,7 +50,6 @@ __all__ = [
     "FileSecretsStore",
     "FileSettingsStore",
     "FileWorkspacesStore",
-    "ProviderConnectionStore",
     "SecretsStore",
     "ServerStores",
     "SettingsStore",

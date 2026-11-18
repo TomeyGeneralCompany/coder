@@ -669,15 +669,8 @@ async def switch_conversation_llm(
     conversation = event_service.get_conversation()
     if cipher is not None:
         llm = decrypt_incoming_llm_secrets(llm, cipher)
-    # Resolve a referenced provider connection before installing the LLM, so a
-    # profile linked to a shared connection runs with its api_key / base_url
-    # instead of a keyless config (mirrors LLMProfileStore.load). A dangling
-    # reference or missing credential surfaces as 422 before the working LLM
-    # is replaced. Inline-key configs without a provider_connection_id are
-    # byte-identical to the old path.
-    llm = await run_store(
-        llm_profile_store.resolve_provider_connection, llm, cipher=cipher
-    )
+    # The request schema accepts only the native Qwen model and loopback URL;
+    # there is no shared provider credential to resolve.
     try:
         conversation.switch_llm(llm)
     except ValueError as e:

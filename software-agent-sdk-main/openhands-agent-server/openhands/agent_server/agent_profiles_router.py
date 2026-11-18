@@ -37,7 +37,7 @@ from openhands.agent_server.persistence import (
     ServerStores,
     run_store,
 )
-from openhands.agent_server.profiles_router import MAX_PROFILES, _has_api_key
+from openhands.agent_server.profiles_router import MAX_PROFILES
 from openhands.sdk.errors import Conflict, NotFound, OperationFailed, Unprocessable
 from openhands.sdk.launch import preview_launch
 from openhands.sdk.llm import LLM
@@ -134,22 +134,8 @@ class RenameAgentProfileRequest(BaseModel):
 
 
 def _llm_has_real_config(llm: LLM) -> bool:
-    """True when ``llm`` carries real, user-provided configuration.
-
-    Distinguishes an already-working setup — a real API key, subscription auth,
-    or a custom endpoint — from bare SDK field defaults on a never-configured
-    account (``model="gpt-5.5"``, no ``api_key``). Only the former is worth
-    mirroring into a named ``default`` LLM profile; persisting the latter leaves
-    a keyless, non-functional "ghost" profile that the user never asked for and
-    that nothing ever cleans up (#4031).
-    """
-    if _has_api_key(llm):
-        return True
-    if llm.is_subscription or llm.auth_type == "subscription":
-        return True
-    if llm.base_url and llm.base_url.strip():
-        return True
-    return False
+    """Native Qwen is runnable without hosted-provider credentials."""
+    return llm.model == "qwen3:4b" and bool(llm.base_url)
 
 
 def _seed_default_llm_profile(
