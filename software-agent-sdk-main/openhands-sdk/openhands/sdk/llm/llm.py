@@ -363,7 +363,8 @@ class LLM(BaseModel):
             except OllamaError as exc:
                 session.telemetry.on_error(exc)
                 if not self._retryable(exc) or attempt >= self.num_retries:
-                    raise
+                    from openhands.sdk.llm.exceptions import map_provider_exception
+                    raise map_provider_exception(exc) from exc
                 if self.retry_listener:
                     self.retry_listener(attempt + 1, self.num_retries, exc)
                 await asyncio.sleep(min(2 ** attempt, 8))
