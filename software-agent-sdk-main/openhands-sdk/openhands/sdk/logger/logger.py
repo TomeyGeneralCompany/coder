@@ -13,7 +13,6 @@ import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
 
-import litellm
 from pythonjsonlogger.json import JsonFormatter
 from rich.console import Console
 
@@ -54,39 +53,10 @@ ENV_AUTO_CONFIG = os.getenv("LOG_AUTO_CONFIG", "true").lower() in {"1", "true", 
 ENV_DEBUG_LLM = os.getenv("DEBUG_LLM", "false").lower() in {"1", "true", "yes"}
 
 
-# ========= LiteLLM controls =========
-_ENABLE_LITELLM_DEBUG = False
-if ENV_DEBUG_LLM:
-    confirmation = input(
-        "\n⚠️ WARNING: You are enabling DEBUG_LLM which may expose sensitive "
-        "information like API keys.\nThis should NEVER be enabled in production.\n"
-        "Type 'y' to confirm you understand the risks: "
-    )
-    if confirmation.lower() == "y":
-        _ENABLE_LITELLM_DEBUG = True
-        litellm.suppress_debug_info = False
-        litellm.set_verbose = True  # type: ignore
-    else:
-        print("DEBUG_LLM disabled due to lack of confirmation")
-        litellm.suppress_debug_info = True
-        litellm.set_verbose = False  # type: ignore
-else:
-    litellm.suppress_debug_info = True
-    litellm.set_verbose = False  # type: ignore
-
-
-def disable_logger(name: str, level: int = logging.CRITICAL) -> None:
-    """Disable or quiet down a specific logger by name."""
+# Local Qwen inference does not configure global third-party model clients.
+for name in ("httpcore", "httpx", "libtmux"):
     logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.propagate = False
-
-
-# Quiet chatty third-party loggers
-for name in ["litellm", "LiteLLM", "openai"]:
-    disable_logger(name, logging.DEBUG if _ENABLE_LITELLM_DEBUG else logging.ERROR)
-for name in ["httpcore", "httpx", "libtmux"]:
-    disable_logger(name, logging.WARNING)
+    logger.setLevel(logging.WARNING)
 
 
 # ========= SETUP =========
