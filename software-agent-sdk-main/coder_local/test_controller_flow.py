@@ -29,7 +29,7 @@ class ControllerFlowTests(unittest.TestCase):
         self.temp.cleanup()
 
     def run_with_stub(self, stub):
-        with patch.object(NativeOllamaClient, "ensure_model"), patch.object(
+        with patch.object(NativeOllamaClient, "ensure_model", return_value=32768), patch.object(
             Controller, "_ask_agent", side_effect=stub
         ):
             return Controller(self.settings, self.store).run("job")
