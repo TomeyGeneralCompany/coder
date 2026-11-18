@@ -329,7 +329,8 @@ class LLM(BaseModel):
             except OllamaError as exc:
                 session.telemetry.on_error(exc)
                 if not self._retryable(exc) or attempt >= self.num_retries:
-                    raise
+                    from openhands.sdk.llm.exceptions import map_provider_exception
+                    raise map_provider_exception(exc) from exc
                 if self.retry_listener:
                     self.retry_listener(attempt + 1, self.num_retries, exc)
                 time.sleep(min(2 ** attempt, 8))
@@ -372,6 +373,8 @@ class LLM(BaseModel):
                       tools: list[dict[str, Any]], callback: Any) -> NativeChatResponse:
         from openhands.sdk.llm.native_ollama import NativeToolCall, NativeUsage
         output = []
+        thinking = []
+        usage = NativeUsage(0, 0)
         calls: list[NativeToolCall] = []
         for part in self._client().stream(
             messages, tools=tools or None, num_ctx=self.max_input_tokens,
@@ -384,10 +387,14 @@ class LLM(BaseModel):
                     choices=[StreamingChoice(delta=Delta(content=part.content))],
                 ))
             calls.extend(part.tool_calls)
+            if part.thinking:
+                thinking.append(part.thinking)
+            if part.usage is not None:
+                usage = part.usage
         return NativeChatResponse(
             id="local_" + uuid4().hex, model=MODEL,
-            content="".join(output), thinking=None,
-            tool_calls=tuple(calls), usage=NativeUsage(0, 0),
+            content="".join(output), thinking="".join(thinking) or None,
+            tool_calls=tuple(calls), usage=usage,
             done_reason="stop", raw={},
         )
 
@@ -397,6 +404,8 @@ class LLM(BaseModel):
     ) -> NativeChatResponse:
         from openhands.sdk.llm.native_ollama import NativeToolCall, NativeUsage
         output = []
+        thinking = []
+        usage = NativeUsage(0, 0)
         calls: list[NativeToolCall] = []
         async for part in self._client().astream(
             messages, tools=tools or None, num_ctx=self.max_input_tokens,
@@ -409,6 +418,10 @@ class LLM(BaseModel):
                     choices=[StreamingChoice(delta=Delta(content=part.content))],
                 ))
             calls.extend(part.tool_calls)
+            if part.thinking:
+                thinking.append(part.thinking)
+            if part.usage is not None:
+                usage = part.usage
         return NativeChatResponse(
             id="local_" + uuid4().hex, model=MODEL,
             content="".join(output), thinking=None,
