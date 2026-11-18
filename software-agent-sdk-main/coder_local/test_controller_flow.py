@@ -101,7 +101,7 @@ class ControllerFlowTests(unittest.TestCase):
             if not coding:
                 return '["Set value to one", "Set value to two"]'
             path = Path(job._execution_workspace) / "src" / "main.py"
-            path.write_text(f"value = {job.operation_index + 1}\\n")
+            path.write_text(f"value = {job.operation_index + 1}\n")
             return "Applied current operation"
 
         result = self.run_with_stub(stub)
@@ -112,7 +112,7 @@ class ControllerFlowTests(unittest.TestCase):
             [item["status"] for item in result.operations],
             ["verified", "verified"],
         )
-        self.assertEqual((self.project / "src/main.py").read_text(), "value = 2\\n")
+        self.assertEqual((self.project / "src/main.py").read_text(), "value = 2\n")
 
     def test_legacy_unverified_complete_state_becomes_blocked(self):
         self.store.save("job", Job(
