@@ -28,13 +28,6 @@ class ControllerFlowTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    @staticmethod
-    def fake_model_ready():
-        with patch.object(NativeOllamaClient, "ensure_model"), patch.object(
-            OllamaBridge, "start", return_value="http://127.0.0.1:9999/v1"
-        ), patch.object(OllamaBridge, "stop"):
-            yield
-
     def run_with_stub(self, stub):
         with patch.object(NativeOllamaClient, "ensure_model"), patch.object(
             Controller, "_ask_agent", side_effect=stub
