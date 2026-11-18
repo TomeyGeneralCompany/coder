@@ -79,6 +79,22 @@ class NativeProfileTests(unittest.TestCase):
         self.assertFalse(any("provider-connections" in path for path in paths))
         self.assertTrue(any(path.startswith("/api/llm") for path in paths))
 
+    def test_legacy_trajectory_api_keys_remain_redacted(self):
+        from openhands.agent_server._secret_redaction import redact_secrets_in_obj
+        data = {
+            "llm": {
+                "api_key": "legacy-cloud-key",
+                "aws_secret_access_key": "historical-secret",
+            },
+            "tool": {"text": "ordinary public content"},
+        }
+        self.assertTrue(redact_secrets_in_obj(data))
+        self.assertNotEqual(data["llm"]["api_key"], "legacy-cloud-key")
+        self.assertNotEqual(
+            data["llm"]["aws_secret_access_key"], "historical-secret"
+        )
+        self.assertEqual(data["tool"]["text"], "ordinary public content")
+
     def test_profile_save_delete_and_rename(self):
         self.store.save("alpha", LLM())
         self.store.rename("alpha", "beta")
