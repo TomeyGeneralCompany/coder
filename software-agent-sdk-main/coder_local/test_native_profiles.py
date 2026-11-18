@@ -71,6 +71,14 @@ class NativeProfileTests(unittest.TestCase):
         self.assertEqual(llm.model, "qwen3:4b")
         self.assertEqual(llm.num_retries, 0)
 
+    def test_agent_server_import_and_no_provider_credential_routes(self):
+        from openhands.agent_server.api import create_app
+        # Building the ASGI graph must not import deleted provider modules.
+        app = create_app()
+        paths = [str(route.path) for route in app.routes]
+        self.assertFalse(any("provider-connections" in path for path in paths))
+        self.assertTrue(any(path.startswith("/api/llm") for path in paths))
+
     def test_profile_save_delete_and_rename(self):
         self.store.save("alpha", LLM())
         self.store.rename("alpha", "beta")
