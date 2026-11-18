@@ -1,0 +1,35 @@
+name: One-time Coder provider dependency lock refresh
+on:
+  push:
+    branches:
+      - coder-harden-provider-stages-checkpoints-scope-verification
+    paths:
+      - 'software-agent-sdk-main/openhands-sdk/pyproject.toml'
+      - '.github/workflows/coder-lock-refresh.yml'
+permissions:
+  contents: write
+jobs:
+  update-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install UV
+        run: python -m pip install uv
+      - name: Regenerate dependency lock
+        working-directory: software-agent-sdk-main
+        run: uv lock
+      - name: Commit only the refreshed workspace lock
+        run: |
+          git config user.name 'coder-local-ci'
+          git config user.email 'coder-local-ci@users.noreply.github.com'
+          git add -- software-agent-sdk-main/uv.lock
+          if ! git diff --cached --quiet; then
+            git commit -m 'Refresh lock after removing unused cloud AI dependency extras'
+            git push origin HEAD:coder-harden-provider-stages-checkpoints-scope-verification
+          fi
