@@ -81,7 +81,7 @@ class CheckpointTests(unittest.TestCase):
         job = Job(project=str(self.project), objective="Edit main", allowed_paths=["src"])
         self.store.save("missing-test", job)
         from openhands.sdk.llm.native_ollama import NativeOllamaClient
-        with patch.object(NativeOllamaClient, "ensure_model"), patch.object(NativeOllamaClient, "show", return_value={"model_info": {}}):
+        with patch.object(NativeOllamaClient, "ensure_model", return_value=32768), patch.object(NativeOllamaClient, "show", return_value={"model_info": {}}):
             result = self.controller.run("missing-test")
         self.assertEqual(result.stage, "blocked")
         self.assertEqual(result.verification["status"], "unverified")
