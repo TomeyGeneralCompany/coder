@@ -6,8 +6,9 @@ on:
       - '.github/workflows/coder-local.yml'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/llm.py'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/utils/local_only.py'
+      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/native_ollama.py'
   push:
-    branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification]
+    branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification, coder-native-ollama-remove-litellm]
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
@@ -44,7 +45,7 @@ jobs:
         env:
           ALLOW_SHORT_CONTEXT_WINDOWS: '1'
           DO_NOT_TRACK: '1'
-        run: uv run --no-sync python -m unittest -v coder_local.test_sdk_integration
+        run: uv run --no-sync python -m unittest -v coder_local.test_sdk_integration coder_local.test_native_ollama
   sandbox-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
