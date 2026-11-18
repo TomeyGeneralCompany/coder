@@ -18,7 +18,7 @@ def main() -> int:
     response_path = Path(sys.argv[2])
     if request["model"] != "qwen3:4b":
         raise ValueError("Only local Qwen3:4B is permitted")
-    if not request["base_url"].startswith("http://127.0.0.1:"):
+    if not request["ollama_url"].startswith("http://127.0.0.1:"):
         raise ValueError("Model adapter must be loopback")
     os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
     os.environ["DO_NOT_TRACK"] = "1"
@@ -35,10 +35,8 @@ def main() -> int:
     ctx = int(request["context_tokens"])
     output = int(request["output_tokens"])
     llm = LLM(
-        model="openai/qwen3:4b",
-        base_url=request["base_url"],
-        api_key="local-only",
-        api_mode="chat",
+        model="qwen3:4b",
+        base_url=request["ollama_url"],
         max_input_tokens=ctx,
         max_output_tokens=output,
         max_message_chars=4500,
