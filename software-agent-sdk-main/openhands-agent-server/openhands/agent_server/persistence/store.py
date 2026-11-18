@@ -30,7 +30,6 @@ from openhands.agent_server.persistence.models import (
     Secrets,
 )
 from openhands.sdk.llm.llm_profile_store import LLMProfileStore
-from openhands.sdk.llm.provider_connection_store import ProviderConnectionStore
 from openhands.sdk.logger import get_logger
 from openhands.sdk.profiles.agent_profile_store import AgentProfileStore
 from openhands.sdk.utils.cipher import FERNET_TOKEN_PREFIX, Cipher
@@ -962,20 +961,6 @@ class ServerStores:
         )
 
     @property
-    def provider_connections(self) -> ProviderConnectionStore:
-        """Stored at ``<profile_dir>/provider-connections``.
-
-        The store itself is cipher-agnostic; callers pass the cipher per call
-        so keys are encrypted at rest.
-        """
-        return self._once(
-            "provider_connections",
-            lambda: ProviderConnectionStore(
-                base_dir=self.profile_dir / "provider-connections"
-            ),
-        )
-
-    @property
     def workspaces(self) -> FileWorkspacesStore:
         return self._once(
             "workspaces",
@@ -987,10 +972,7 @@ class ServerStores:
         """Stored at ``<profile_dir>/profiles``, never workspace-relative."""
         return self._once(
             "llm_profiles",
-            lambda: LLMProfileStore(
-                base_dir=self.profile_dir / "profiles",
-                provider_store=self.provider_connections,
-            ),
+            lambda: LLMProfileStore(base_dir=self.profile_dir / "profiles"),
         )
 
     @property
