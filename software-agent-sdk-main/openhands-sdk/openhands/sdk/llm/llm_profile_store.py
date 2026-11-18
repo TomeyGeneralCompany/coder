@@ -29,7 +29,6 @@ from openhands.sdk.utils.pydantic_secrets import (
 
 if TYPE_CHECKING:
     from openhands.sdk.llm.llm import LLM
-    from openhands.sdk.llm.provider_connection_store import ProviderConnectionStore
     from openhands.sdk.utils.cipher import Cipher
 
 _DEFAULT_PROFILE_DIR: Final[Path] = get_user_persistence_dir() / "profiles"
@@ -110,7 +109,7 @@ class LLMProfileStore:
         self,
         base_dir: Path | str | None = None,
         *,
-        provider_store: ProviderConnectionStore | None = None,
+        provider_store: Any | None = None,
     ) -> None:
         """Initialize the profile store.
 
@@ -118,15 +117,10 @@ class LLMProfileStore:
             base_dir: Path to the directory where the profiles are stored.
                 If `None` is provided, the default directory is used, i.e.,
                 `~/.openhands/profiles`.
-            provider_store: Store of shared provider connections used to
-                resolve a profile's ``provider_connection_id`` at load time.
-                When `None` (the default), a :class:`ProviderConnectionStore`
-                is created in a ``provider-connections`` directory *sibling to*
-                ``base_dir`` so that every ``LLMProfileStore`` — including
-                custom-directory and bare standalone SDK instances — resolves
-                connections from the same location it reads profiles from. Pass
-                an explicit store to use an unrelated directory (e.g. the
-                agent-server's config-scoped directory) or a test double.
+            provider_store: Deprecated no-op keyword accepted for callers
+                upgrading from earlier SDK releases. Credentials from this
+                argument are not inspected or used.
+
         """
         self.base_dir = Path(base_dir) if base_dir is not None else _DEFAULT_PROFILE_DIR
         # ensure directory existence
