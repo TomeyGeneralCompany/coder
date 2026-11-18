@@ -1241,7 +1241,6 @@ class EventService:
         """
 
         def callback(event: Event) -> None:
-            if isinstance(event, ConversationStateUpdateEvent) and event.key == "agent":
             conversation._on_event(event)
 
         return callback
