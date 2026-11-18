@@ -23,7 +23,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local-only Qwen software engineer")
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_DIR)
     parser.add_argument("--max-context", type=int, default=32768)
-    parser.add_argument("--model", default="qwen3:4b")
     parser.add_argument("--ollama", default="http://127.0.0.1:11434")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -50,7 +49,7 @@ def main() -> int:
         return 0
 
     settings = Settings(
-        model=args.model, ollama_url=args.ollama, max_context=args.max_context
+        ollama_url=args.ollama, max_context=args.max_context
     )
     controller = Controller(settings, store)
     if args.command == "reconcile":
