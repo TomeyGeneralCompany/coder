@@ -309,9 +309,16 @@ class Controller:
         bridge.configure(context_tokens=ctx, output_tokens=output_tokens)
 
         root = Path(__file__).resolve().parents[1]
-        workspace = Path(
-            getattr(job, "_execution_workspace", self._project(job))
-        ).resolve(strict=True)
+        if coding:
+            workspace = Path(
+                getattr(job, "_execution_workspace", self._project(job))
+            ).resolve(strict=True)
+        else:
+            # Planning needs no project write access and uses a small local
+            # workspace mounted beneath the state directory.
+            workspace = self.store.root / "planning_workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            workspace = workspace.resolve(strict=True)
         conversations = self.store.root / "conversations"
         outputs = self.store.root / "agent_outputs"
         conversations.mkdir(parents=True, exist_ok=True)
@@ -367,11 +374,9 @@ class Controller:
                 "--setenv", "ALLOW_SHORT_CONTEXT_WINDOWS", "1",
                 "--chdir", str(root),
             ])
-            if coding:
-                # Writable staging is never the original project.
-                if not workspace.is_relative_to(self.store.root):
-                    raise PermissionError("Coding workspace must be staged")
-                command.extend(["--bind", str(workspace), str(workspace)])
+            if not workspace.is_relative_to(self.store.root):
+                raise PermissionError("Agent workspace must be within local staging")
+            command.extend(["--bind", str(workspace), str(workspace)])
             command.extend([
                 "--", sys.executable, "-m", "coder_local.agent_worker",
                 str(request_path), str(result_path),
