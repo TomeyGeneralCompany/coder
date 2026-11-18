@@ -1670,7 +1670,6 @@ class OpenHandsAgentSettings(AgentSettingsBase):
             agent = settings.create_agent()
         """
         from openhands.sdk.agent import Agent
-        from openhands.sdk.llm.auth.openai import create_subscription_llm_from_config
 
         specs = merge_duplicate_tools(resolve_tool_specs(self.tools))
         include_default_tools = [tool.__name__ for tool in BUILT_IN_TOOLS]
@@ -1686,26 +1685,14 @@ class OpenHandsAgentSettings(AgentSettingsBase):
             elif builtin.__name__ not in include_default_tools:
                 include_default_tools.append(builtin.__name__)
 
-        # The routing tool needs the active meta-profile name, which the
-        # name-only ``include_default_tools`` path cannot pass, so add it as a
-        # ``Tool`` spec carrying the param. When no meta-profile is active, the
-        # tool falls back to the first available one, so we still wire it.
-        if self.enable_classify_and_switch_llm_tool:
-            params: dict[str, Any] = {}
-            if self.active_meta_profile:
-                params["active_meta_profile"] = self.active_meta_profile
-            if self.meta_profile:
-                params["meta_profile"] = self.meta_profile.model_dump(mode="json")
-            if self.meta_profile_llms:
-                params["meta_profile_llms"] = self.meta_profile_llms
-            if ClassifyAndSwitchLLMTool.__name__ in include_default_tools:
-                include_default_tools.remove(ClassifyAndSwitchLLMTool.__name__)
-            tools = [
-                spec for spec in tools if spec.name != ClassifyAndSwitchLLMTool.__name__
-            ]
-            tools.append(Tool(name=ClassifyAndSwitchLLMTool.__name__, params=params))
+        # The local Coder controller allocates context within qwen3:4b.
+        # Routing through saved profiles could reactivate hosted providers.
+        if self.enable_classify_and_switch_llm_tool or self.meta_profile_llms:
+            raise ValueError(
+                "Local Coder does not support routing between LLM profiles"
+            )
 
-        llm = create_subscription_llm_from_config(self.llm)
+        llm = self.llm
         condenser = self.build_condenser(llm)
         return Agent(
             llm=llm,
@@ -1744,31 +1731,11 @@ class OpenHandsAgentSettings(AgentSettingsBase):
         if not self.verification.critic_enabled:
             return None
 
-        api_key = self.verification.critic_api_key or self.llm.api_key
-        if api_key is None:
-            return None
-
-        from openhands.sdk.critic.base import IterativeRefinementConfig
-        from openhands.sdk.critic.impl.api import APIBasedCritic
-
-        iterative_refinement = None
-        if self.verification.enable_iterative_refinement:
-            iterative_refinement = IterativeRefinementConfig(
-                success_threshold=self.verification.critic_threshold,
-                max_iterations=self.verification.max_refinement_iterations,
-            )
-
-        overrides: dict[str, Any] = {}
-        if self.verification.critic_server_url is not None:
-            overrides["server_url"] = self.verification.critic_server_url
-        if self.verification.critic_model_name is not None:
-            overrides["model_name"] = self.verification.critic_model_name
-
-        return APIBasedCritic(
-            api_key=api_key,
-            mode=self.verification.critic_mode,
-            iterative_refinement=iterative_refinement,
-            **overrides,
+        # The former critic uses a separately hosted API. It must not
+        # communicate externally in a strictly local Qwen-only runtime.
+        raise ValueError(
+            "Hosted API critic is unavailable in local-only Coder; "
+            "use the controller's local verification stages."
         )
 
 
