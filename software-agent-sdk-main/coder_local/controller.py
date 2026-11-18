@@ -6,6 +6,8 @@ against the user-selected project, never against Coder's own source by default.
 from __future__ import annotations
 
 import fcntl
+import shutil
+import sys
 import hashlib
 import json
 import os
@@ -278,76 +280,100 @@ class Controller:
         self, bridge: OllamaBridge, job_id: str, job: Job,
         instruction: str, *, coding: bool,
     ) -> str:
-        # All LLM requests go to our own loopback adapter, never a cloud provider.
-        os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
-        os.environ["DO_NOT_TRACK"] = "1"
-        from openhands.sdk import Agent, Conversation, LLM, Tool
-        from openhands.sdk.context.condenser import LLMSummarizingCondenser
-        from openhands.sdk.conversation import (
-            ConversationExecutionStatus,
-            get_agent_final_response,
-        )
-        from openhands.tools.file_editor import FileEditorTool
-        from openhands.tools.terminal import TerminalTool
+        """Execute OpenHands inside a fail-closed read-only-host sandbox.
 
+        The native Ollama bridge remains outside the sandbox on loopback.
+        Bubblewrap grants write access only to the staged workspace, SDK
+        conversation persistence and the result folder. The real project and
+        the rest of the host filesystem remain read-only to the agent process.
+        """
+        binary = shutil.which("bwrap")
+        if binary is None:
+            raise RuntimeError(
+                "bubblewrap (bwrap) is required for scoped Coder execution"
+            )
         ctx = self.allocator.select(instruction, needs_code=coding)
         job.context_tokens = ctx
         self.store.save(job_id, job)
-        bridge.configure(
-            context_tokens=ctx,
-            output_tokens=min(self.settings.output_tokens, ctx // 3),
+        output_tokens = min(self.settings.output_tokens, ctx // 3)
+        bridge.configure(context_tokens=ctx, output_tokens=output_tokens)
+
+        root = Path(__file__).resolve().parents[1]
+        workspace = Path(
+            getattr(job, "_execution_workspace", self._project(job))
+        ).resolve(strict=True)
+        conversations = self.store.root / "conversations"
+        outputs = self.store.root / "agent_outputs"
+        conversations.mkdir(parents=True, exist_ok=True)
+        outputs.mkdir(parents=True, exist_ok=True)
+        fd, request_name = tempfile.mkstemp(
+            prefix=f"{job_id}-", suffix=".input.json", dir=self.store.root
         )
-        llm = LLM(
-            model=f"openai/{self.settings.model}",
-            base_url=bridge.url,
-            api_key="local-only",
-            api_mode="chat",
-            max_input_tokens=ctx,
-            max_output_tokens=min(self.settings.output_tokens, ctx // 3),
-            max_message_chars=4500,
-            stream=False,
-            num_retries=1,
-            timeout=self.settings.timeout_seconds,
-        )
-        tools = (
-            [Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)]
-            if coding else []
-        )
-        agent = Agent(
-            llm=llm,
-            tools=tools,
-            tool_concurrency_limit=1,
-            condenser=LLMSummarizingCondenser(
-                llm=llm.model_copy(update={"usage_id": "condenser"}),
-                max_size=28,
-                keep_first=2,
-                max_tokens=max(2048, ctx - self.settings.output_tokens - 1024),
-            ),
-            system_prompt=(
-                "You are a local software engineer. Follow the provided task scope. "
-                "Complete one bounded operation at a time. Do not use hosted AI services. "
-                "Do not modify files outside the authorized project and allowed paths. "
-                "Report actual results; never invent executed tests."
-            ),
-        )
-        (self.store.root / "conversations").mkdir(parents=True, exist_ok=True)
-        conversation = Conversation(
-            agent=agent,
-            workspace=str(getattr(job, "_execution_workspace", self._project(job))),
-            persistence_dir=str(self.store.root / "conversations"),
-            max_iteration_per_run=self.settings.max_agent_iterations if coding else 3,
-        )
-        conversation.send_message(instruction)
-        conversation.run()
-        if conversation.state.execution_status != ConversationExecutionStatus.FINISHED:
-            raise RuntimeError(
-                "Agent did not finish its stage: "
-                + str(conversation.state.execution_status)
+        request_path = Path(request_name)
+        result_path = outputs / (request_path.name + ".result.json")
+        request = {
+            "model": self.settings.model,
+            "base_url": bridge.url,
+            "context_tokens": ctx,
+            "output_tokens": output_tokens,
+            "timeout": self.settings.timeout_seconds,
+            "coding": coding,
+            "max_iterations": self.settings.max_agent_iterations,
+            "workspace": str(workspace),
+            "persistence_dir": str(conversations),
+            "instruction": instruction,
+        }
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(request, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # Reads from the host are possible, writes are isolated by a
+            # read-only root. Only the declared directories are writable.
+            command = [
+                binary, "--die-with-parent", "--new-session",
+                "--unshare-user", "--unshare-pid",
+                "--ro-bind", "/", "/",
+                "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+                "--bind", str(conversations), str(conversations),
+                "--bind", str(outputs), str(outputs),
+                "--setenv", "HOME", "/tmp",
+                "--setenv", "XDG_CACHE_HOME", "/tmp/.cache",
+                "--setenv", "PYTHONPATH", str(root),
+                "--setenv", "DO_NOT_TRACK", "1",
+                "--setenv", "ALLOW_SHORT_CONTEXT_WINDOWS", "1",
+                "--chdir", str(root),
+            ]
+            if coding:
+                # Writable staging is never the original project.
+                if not workspace.is_relative_to(self.store.root):
+                    raise PermissionError("Coding workspace must be staged")
+                command.extend(["--bind", str(workspace), str(workspace)])
+            command.extend([
+                "--", sys.executable, "-m", "coder_local.agent_worker",
+                str(request_path), str(result_path),
+            ])
+            result = subprocess.run(
+                command, cwd=root, capture_output=True, text=True,
+                timeout=self.settings.timeout_seconds
+                * max(1, self.settings.max_agent_iterations),
+                check=False,
+                start_new_session=True,
             )
-        response = get_agent_final_response(conversation.state.events)
-        if response is None:
-            raise RuntimeError("Agent finished without a recorded final response")
-        return str(response)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    "Isolated OpenHands worker failed: "
+                    + (result.stderr or result.stdout)[-4000:]
+                )
+            if not result_path.exists():
+                raise RuntimeError("Isolated worker returned no result artifact")
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            if payload.get("finished") is not True:
+                raise RuntimeError("Isolated worker did not finish its operation")
+            return str(payload["response"])
+        finally:
+            request_path.unlink(missing_ok=True)
+            result_path.unlink(missing_ok=True)
 
     def _check_scope(self, job: Job, before: dict[str, str]) -> None:
         if not job.allowed_paths:
