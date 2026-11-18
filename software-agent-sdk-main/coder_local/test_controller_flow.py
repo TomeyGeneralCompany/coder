@@ -52,10 +52,11 @@ class ControllerFlowTests(unittest.TestCase):
             ]
         ))
 
-        def stub(_bridge, _id, _job, _prompt, *, coding):
+        def stub(_bridge, _id, job, _prompt, *, coding):
             if coding:
-                (self.project / "src" / "main.py").write_text("value = 3\n")
-            return "Completed operation"
+                (Path(job._execution_workspace) / "src" / "main.py").write_text("value = 3\n")
+                return "Completed operation"
+            return '["Set the value to 3"]'
 
         result = self.run_with_stub(stub)
         self.assertEqual(result.stage, "complete")
@@ -69,13 +70,63 @@ class ControllerFlowTests(unittest.TestCase):
             project=str(self.project), objective="Fail a check",
             test_command=["python", "-c", "raise SystemExit(1)"],
         ))
-        result = self.run_with_stub(
-            lambda *_args, **_kwargs: "Completed operation"
-        )
+        def stub(_bridge, _id, job, _prompt, *, coding):
+            if not coding:
+                return '["Update the source file"]'
+            path = Path(job._execution_workspace) / "src" / "main.py"
+            path.write_text(f"value = {job.attempts + 1}\n")
+            return "Changed source"
+
+        job = self.store.load("job")
+        job.allowed_paths = ["src"]
+        self.store.save("job", job)
+        result = self.run_with_stub(stub)
         self.assertEqual(result.stage, "blocked")
         self.assertFalse(result.complete)
         self.assertEqual(result.verification["status"], "failed")
         self.assertEqual(result.attempts, 2)
+
+    def test_multi_operation_plan_verifies_every_stage(self):
+        self.store.save("job", Job(
+            project=str(self.project),
+            objective="Make two changes",
+            allowed_paths=["src"],
+            test_command=[
+                "python", "-c",
+                "from src.main import value; assert value >= 1",
+            ],
+        ))
+
+        def stub(_bridge, _id, job, _prompt, *, coding):
+            if not coding:
+                return '["Set value to one", "Set value to two"]'
+            path = Path(job._execution_workspace) / "src" / "main.py"
+            path.write_text(f"value = {job.operation_index + 1}\n")
+            return "Applied current operation"
+
+        result = self.run_with_stub(stub)
+        self.assertTrue(result.complete)
+        self.assertEqual(result.operation_index, 2)
+        self.assertEqual(result.verified_operations, ["step-01", "step-02"])
+        self.assertEqual(
+            [item["status"] for item in result.operations],
+            ["verified", "verified"],
+        )
+        self.assertEqual((self.project / "src/main.py").read_text(), "value = 2\n")
+
+    def test_legacy_unverified_complete_state_becomes_blocked(self):
+        self.store.save("job", Job(
+            project=str(self.project),
+            objective="Legacy task",
+            stage="complete",
+            complete=True,
+            verification={"status": "unverified"},
+        ))
+        result = self.run_with_stub(
+            lambda *_args, **_kwargs: "unused"
+        )
+        self.assertFalse(result.complete)
+        self.assertEqual(result.stage, "blocked")
 
     def test_detects_edit_outside_authorized_scope(self):
         self.store.save("job", Job(
@@ -84,15 +135,17 @@ class ControllerFlowTests(unittest.TestCase):
             test_command=["python", "-c", "print('ok')"],
         ))
 
-        def stub(_bridge, _id, _job, _prompt, *, coding):
+        def stub(_bridge, _id, job, _prompt, *, coding):
             if coding:
-                (self.project / "outside.txt").write_text("unauthorized")
-            return "Completed operation"
+                (Path(job._execution_workspace) / "outside.txt").write_text("unauthorized")
+                return "Completed operation"
+            return '["Make the requested restricted edit"]'
 
-        with self.assertRaisesRegex(RuntimeError, "outside authorized paths"):
+        with self.assertRaisesRegex(PermissionError, "Unauthorized staging changes"):
             self.run_with_stub(stub)
         persisted = self.store.load("job")
-        self.assertIn("outside authorized paths", persisted.last_error)
+        self.assertIn("Unauthorized staging changes", persisted.last_error)
+        self.assertFalse((self.project / "outside.txt").exists())
 
 
 if __name__ == "__main__":

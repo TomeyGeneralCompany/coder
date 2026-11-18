@@ -74,6 +74,7 @@ def create_server(
 ) -> tuple[ThreadingHTTPServer, JobQueue]:
     if host != "127.0.0.1":
         raise ValueError("Coder HTTP API must bind to local loopback")
+    settings.validate()
     jobs = JobQueue(settings, store)
 
     class Handler(BaseHTTPRequestHandler):
@@ -183,12 +184,11 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_DIR)
     parser.add_argument("--max-context", type=int, default=32768)
-    parser.add_argument("--model", default="qwen3:4b")
     parser.add_argument("--ollama", default="http://127.0.0.1:11434")
     args = parser.parse_args()
     server, jobs = create_server(
         Settings(
-            model=args.model, ollama_url=args.ollama, max_context=args.max_context
+            ollama_url=args.ollama, max_context=args.max_context
         ),
         JobStore(args.state_dir),
         port=args.port,

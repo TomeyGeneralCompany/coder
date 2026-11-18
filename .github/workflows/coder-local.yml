@@ -4,8 +4,10 @@ on:
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
+      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/llm.py'
+      - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/utils/local_only.py'
   push:
-    branches: [coder-local-qwen-stage-gates]
+    branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification]
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
@@ -23,7 +25,7 @@ jobs:
         run: python -m compileall -q software-agent-sdk-main/coder_local
       - name: Test native adapter and controller
         working-directory: software-agent-sdk-main
-        run: python -m unittest -v coder_local.test_local coder_local.test_server coder_local.test_controller_flow
+        run: python -m unittest -v coder_local.test_local coder_local.test_server coder_local.test_controller_flow coder_local.test_hardening
   sdk-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -43,3 +45,25 @@ jobs:
           ALLOW_SHORT_CONTEXT_WINDOWS: '1'
           DO_NOT_TRACK: '1'
         run: uv run --no-sync python -m unittest -v coder_local.test_sdk_integration
+  sandbox-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install bubblewrap and uv
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bubblewrap
+          python -m pip install uv
+      - name: Install SDK
+        working-directory: software-agent-sdk-main
+        run: uv sync --frozen --no-dev
+      - name: Execute genuine sandboxed coding stage
+        working-directory: software-agent-sdk-main
+        env:
+          DO_NOT_TRACK: '1'
+          ALLOW_SHORT_CONTEXT_WINDOWS: '1'
+        run: uv run --no-sync python -m unittest -v coder_local.test_sandbox_e2e

@@ -6,6 +6,8 @@ against the user-selected project, never against Coder's own source by default.
 from __future__ import annotations
 
 import fcntl
+import shutil
+import sys
 import hashlib
 import json
 import os
@@ -20,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from coder_local.bridge import OllamaBridge
+from coder_local.safety import StagedWorkspace, validate_scope, _manifest
 
 
 STAGES = ("intake", "inspect", "plan", "implement", "verify", "correct", "complete", "blocked")
@@ -42,6 +45,9 @@ class Settings:
     timeout_seconds: int = 1200
 
     def validate(self) -> None:
+        if self.model != "qwen3:4b":
+            raise ValueError("Coder uses only the local qwen3:4b model")
+        OllamaBridge(model=self.model, ollama_url=self.ollama_url)
         if not self.context_profiles or tuple(sorted(set(self.context_profiles))) != self.context_profiles:
             raise ValueError("context_profiles must be sorted, distinct, and nonempty")
         if self.max_context < self.context_profiles[0]:
@@ -67,6 +73,10 @@ class Job:
     history: list[dict[str, Any]] = field(default_factory=list)
     context_tokens: int = 8192
     complete: bool = False
+    operations: list[dict[str, Any]] = field(default_factory=list)
+    operation_index: int = 0
+    inflight: dict[str, Any] | None = None
+    verified_operations: list[str] = field(default_factory=list)
 
 
 class JobStore:
@@ -228,6 +238,44 @@ class Controller:
             raise ValueError(f"Project directory does not exist: {root}")
         return root
 
+    def _checkpoint(self, job_id: str, job: Job, action: str) -> None:
+        """Write intent before any model operation; never blindly replay it."""
+        job.inflight = {
+            "action": action,
+            "stage": job.stage,
+            "operation_index": job.operation_index,
+            "baseline": _manifest(self._project(job)),
+            "time": int(time.time()),
+        }
+        self.store.save(job_id, job)
+
+    def _clear_checkpoint(self, job_id: str, job: Job) -> None:
+        job.inflight = None
+        self.store.save(job_id, job)
+
+    @staticmethod
+    def _decode_plan(response: str) -> list[dict[str, Any]]:
+        """Require a bounded, explicit task list; malformed model output blocks."""
+        text = response.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if (
+                len(lines) < 3
+                or lines[0].strip() not in {"```", "```json"}
+                or lines[-1].strip() != "```"
+            ):
+                raise ValueError("Malformed fenced JSON plan")
+            text = "\n".join(lines[1:-1]).strip()
+        payload = json.loads(text)
+        if not isinstance(payload, list) or not 1 <= len(payload) <= 30:
+            raise ValueError("Plan must contain 1 to 30 operations")
+        tasks = []
+        for index, item in enumerate(payload):
+            if not isinstance(item, str) or not 1 <= len(item.strip()) <= 600:
+                raise ValueError("Each planned operation must be a brief string")
+            tasks.append({"id": f"step-{index+1:02d}", "instruction": item.strip(), "status": "pending"})
+        return tasks
+
     def _transition(self, job_id: str, job: Job, new_stage: str, note: str) -> None:
         if new_stage not in STAGES:
             raise ValueError(f"Unknown stage: {new_stage}")
@@ -242,76 +290,118 @@ class Controller:
         self, bridge: OllamaBridge, job_id: str, job: Job,
         instruction: str, *, coding: bool,
     ) -> str:
-        # All LLM requests go to our own loopback adapter, never a cloud provider.
-        os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
-        os.environ["DO_NOT_TRACK"] = "1"
-        from openhands.sdk import Agent, Conversation, LLM, Tool
-        from openhands.sdk.context.condenser import LLMSummarizingCondenser
-        from openhands.sdk.conversation import (
-            ConversationExecutionStatus,
-            get_agent_final_response,
-        )
-        from openhands.tools.file_editor import FileEditorTool
-        from openhands.tools.terminal import TerminalTool
+        """Execute OpenHands inside a fail-closed read-only-host sandbox.
 
+        The native Ollama bridge remains outside the sandbox on loopback.
+        Bubblewrap grants write access only to the staged workspace, SDK
+        conversation persistence and the result folder. The real project and
+        the rest of the host filesystem remain read-only to the agent process.
+        """
+        binary = shutil.which("bwrap")
+        if binary is None:
+            raise RuntimeError(
+                "bubblewrap (bwrap) is required for scoped Coder execution"
+            )
         ctx = self.allocator.select(instruction, needs_code=coding)
         job.context_tokens = ctx
         self.store.save(job_id, job)
-        bridge.configure(
-            context_tokens=ctx,
-            output_tokens=min(self.settings.output_tokens, ctx // 3),
+        output_tokens = min(self.settings.output_tokens, ctx // 3)
+        bridge.configure(context_tokens=ctx, output_tokens=output_tokens)
+
+        root = Path(__file__).resolve().parents[1]
+        if coding:
+            workspace = Path(
+                getattr(job, "_execution_workspace", self._project(job))
+            ).resolve(strict=True)
+        else:
+            # Planning needs no project write access and uses a small local
+            # workspace mounted beneath the state directory.
+            workspace = self.store.root / "planning_workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            workspace = workspace.resolve(strict=True)
+        conversations = self.store.root / "conversations"
+        outputs = self.store.root / "agent_outputs"
+        conversations.mkdir(parents=True, exist_ok=True)
+        outputs.mkdir(parents=True, exist_ok=True)
+        fd, request_name = tempfile.mkstemp(
+            prefix=f"{job_id}-", suffix=".input.json", dir=self.store.root
         )
-        llm = LLM(
-            model=f"openai/{self.settings.model}",
-            base_url=bridge.url,
-            api_key="local-only",
-            api_mode="chat",
-            max_input_tokens=ctx,
-            max_output_tokens=min(self.settings.output_tokens, ctx // 3),
-            max_message_chars=4500,
-            stream=False,
-            num_retries=1,
-            timeout=self.settings.timeout_seconds,
-        )
-        tools = (
-            [Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)]
-            if coding else []
-        )
-        agent = Agent(
-            llm=llm,
-            tools=tools,
-            tool_concurrency_limit=1,
-            condenser=LLMSummarizingCondenser(
-                llm=llm.model_copy(update={"usage_id": "condenser"}),
-                max_size=28,
-                keep_first=2,
-                max_tokens=max(2048, ctx - self.settings.output_tokens - 1024),
-            ),
-            system_prompt=(
-                "You are a local software engineer. Follow the provided task scope. "
-                "Complete one bounded operation at a time. Do not use hosted AI services. "
-                "Do not modify files outside the authorized project and allowed paths. "
-                "Report actual results; never invent executed tests."
-            ),
-        )
-        (self.store.root / "conversations").mkdir(parents=True, exist_ok=True)
-        conversation = Conversation(
-            agent=agent,
-            workspace=str(self._project(job)),
-            persistence_dir=str(self.store.root / "conversations"),
-            max_iteration_per_run=self.settings.max_agent_iterations if coding else 3,
-        )
-        conversation.send_message(instruction)
-        conversation.run()
-        if conversation.state.execution_status != ConversationExecutionStatus.FINISHED:
-            raise RuntimeError(
-                "Agent did not finish its stage: "
-                + str(conversation.state.execution_status)
+        request_path = Path(request_name)
+        result_path = outputs / (request_path.name + ".result.json")
+        request = {
+            "model": self.settings.model,
+            "base_url": bridge.url,
+            "context_tokens": ctx,
+            "output_tokens": output_tokens,
+            "timeout": self.settings.timeout_seconds,
+            "coding": coding,
+            "max_iterations": self.settings.max_agent_iterations,
+            "workspace": str(workspace),
+            "persistence_dir": str(conversations),
+            "instruction": instruction,
+        }
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(request, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # Reads from the host are possible, writes are isolated by a
+            # read-only root. Only the declared directories are writable.
+            command = [
+                binary, "--die-with-parent", "--new-session",
+                "--unshare-user", "--unshare-pid", "--clearenv",
+                "--ro-bind", "/", "/",
+                "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+            ]
+            # A temporary state directory may itself live under /tmp. Restore
+            # its mount-point parents inside the otherwise-private /tmp.
+            if self.store.root.is_relative_to(Path("/tmp")):
+                for parent in reversed(self.store.root.parents):
+                    if parent != Path("/tmp") and parent.is_relative_to(Path("/tmp")):
+                        command.extend(["--dir", str(parent)])
+                command.extend(["--dir", str(self.store.root)])
+            command.extend([
+                "--ro-bind", str(self.store.root), str(self.store.root),
+                "--bind", str(conversations), str(conversations),
+                "--bind", str(outputs), str(outputs),
+                "--setenv", "HOME", "/tmp",
+                "--setenv", "PATH", os.environ.get("PATH", "/usr/bin:/bin"),
+                "--setenv", "LANG", "C.UTF-8",
+                "--setenv", "XDG_CACHE_HOME", "/tmp/.cache",
+                "--setenv", "PYTHONPATH", str(root),
+                "--setenv", "DO_NOT_TRACK", "1",
+                "--setenv", "CODER_LOCAL_ONLY", "1",
+                "--setenv", "ALLOW_SHORT_CONTEXT_WINDOWS", "1",
+                "--chdir", str(root),
+            ])
+            if not workspace.is_relative_to(self.store.root):
+                raise PermissionError("Agent workspace must be within local staging")
+            command.extend(["--bind", str(workspace), str(workspace)])
+            command.extend([
+                "--", sys.executable, "-m", "coder_local.agent_worker",
+                str(request_path), str(result_path),
+            ])
+            result = subprocess.run(
+                command, cwd=root, capture_output=True, text=True,
+                timeout=self.settings.timeout_seconds
+                * max(1, self.settings.max_agent_iterations),
+                check=False,
+                start_new_session=True,
             )
-        response = get_agent_final_response(conversation.state.events)
-        if response is None:
-            raise RuntimeError("Agent finished without a recorded final response")
-        return str(response)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    "Isolated OpenHands worker failed: "
+                    + (result.stderr or result.stdout)[-4000:]
+                )
+            if not result_path.exists():
+                raise RuntimeError("Isolated worker returned no result artifact")
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            if payload.get("finished") is not True:
+                raise RuntimeError("Isolated worker did not finish its operation")
+            return str(payload["response"])
+        finally:
+            request_path.unlink(missing_ok=True)
+            result_path.unlink(missing_ok=True)
 
     def _check_scope(self, job: Job, before: dict[str, str]) -> None:
         if not job.allowed_paths:
@@ -327,6 +417,29 @@ class Controller:
             ):
                 raise RuntimeError(f"Change outside authorized paths: {path}")
 
+    def reconcile(self, job_id: str) -> Job:
+        """Explicit restart reconciliation; never automatically replay in-flight work.
+
+        The caller must inspect the previous operation before requesting reconciliation.
+        Automatic recovery is possible only when the project fingerprint is unchanged.
+        """
+        with self.store.execution_lock():
+            job = self.store.load(job_id)
+            if job.inflight is None:
+                raise ValueError("No interrupted operation to reconcile")
+            if _manifest(self._project(job)) != job.inflight["baseline"]:
+                raise RuntimeError(
+                    "Project changed during interrupted operation; manual review required"
+                )
+            original_stage = job.inflight["stage"]
+            if original_stage not in {"plan", "implement", "correct", "verify"}:
+                raise ValueError("Interrupted stage is not safe to reconcile")
+            job.inflight = None
+            job.last_error = ""
+            job.stage = original_stage
+            self.store.save(job_id, job)
+            return job
+
     def run(self, job_id: str, *, resume: bool = False) -> Job:
         with self.store.execution_lock():
             return self._run_locked(job_id, resume=resume)
@@ -335,8 +448,25 @@ class Controller:
         job = self.store.load(job_id)
         root = self._project(job)
         if job.stage == "complete":
+            if not (
+                job.verification.get("status") == "passed"
+                and bool(job.operations)
+                and all(task.get("status") == "verified" for task in job.operations)
+            ):
+                job.complete = False
+                self._transition(
+                    job_id, job, "blocked",
+                    "Previous completion lacks verified operation evidence",
+                )
             return job
-        if job.stage == "blocked" and not resume:
+        if job.stage == "blocked":
+            return job
+        if job.inflight is not None:
+            job.last_error = (
+                "Interrupted in-flight operation was not replayed. "
+                "Inspect project state and explicitly reconcile before continuing."
+            )
+            self._transition(job_id, job, "blocked", "Unreconciled checkpoint")
             return job
 
         bridge = OllamaBridge(
@@ -361,63 +491,104 @@ class Controller:
                 if stage == "intake":
                     if not job.objective.strip():
                         raise ValueError("Assignment objective is empty")
+                    validate_scope(job.allowed_paths)
+                    if not job.test_command:
+                        job.verification = {
+                            "status": "unverified", "reason": "Verification command required"
+                        }
+                        self._transition(job_id, job, "blocked", "Missing verification command")
+                        continue
                     self._transition(job_id, job, "inspect", "Assignment recorded")
                 elif stage == "inspect":
                     job.inspection = _inspection(root, job.objective)
                     self._transition(job_id, job, "plan", "Source inspected")
                 elif stage == "plan":
                     prompt = (
-                        "Prepare a concise implementation plan for the authorized "
-                        "assignment. Do not edit files.\n"
+                        "Break the authorized assignment into 1-30 small, ordered "
+                        "development operations. Return ONLY a JSON array of concise "
+                        "instruction strings. Each operation should be independently "
+                        "editable and testable. Do not edit files.\n"
                         f"OBJECTIVE:\n{job.objective}\nSCOPE:\n{job.allowed_paths}\n"
                         f"REPOSITORY:\n{job.inspection[:12000]}"
                     )
-                    job.planned_work = self._ask_agent(
-                        bridge, job_id, job, prompt, coding=False
-                    )[:12000]
-                    self._transition(job_id, job, "implement", "Plan recorded")
+                    self._checkpoint(job_id, job, "plan")
+                    response = self._ask_agent(bridge, job_id, job, prompt, coding=False)
+                    job.operations = self._decode_plan(response)
+                    job.planned_work = response[:12000]
+                    self._clear_checkpoint(job_id, job)
+                    self._transition(job_id, job, "implement", "Bounded work plan recorded")
                 elif stage in {"implement", "correct"}:
-                    before = _snapshot_files(root) if job.allowed_paths else {}
-                    prompt = (
-                        f"Implement this authorized task in {root}.\n"
-                        f"OBJECTIVE:\n{job.objective}\n"
-                        f"ALLOWED PATHS:\n{job.allowed_paths or ['project workspace']}\n"
-                        f"PLAN:\n{job.planned_work[:6500]}\n"
-                        f"RELEVANT SOURCE:\n{job.inspection[:6500]}\n"
-                        f"PREVIOUS TEST ERROR:\n{job.last_error[-4500:]}\n"
-                        "Make the changes using the supplied tools. "
-                        "Do not commit, push, merge, or modify unrelated files."
-                    )
-                    try:
-                        self._ask_agent(bridge, job_id, job, prompt, coding=True)
-                    finally:
-                        # Even a failed agent call may have modified project files.
-                        self._check_scope(job, before)
-                    self._transition(job_id, job, "verify", "Coding operation finished")
+                    if job.operation_index >= len(job.operations):
+                        self._transition(job_id, job, "blocked", "No pending operation")
+                        continue
+                    operation = job.operations[job.operation_index]
+                    self._checkpoint(job_id, job, operation["id"])
+                    with StagedWorkspace(root, self.store.root, job.allowed_paths) as staged:
+                        job._execution_workspace = str(staged.path)
+                        prompt = (
+                            f"Modify only the staged project at {staged.path}.\n"
+                            f"OVERALL OBJECTIVE:\n{job.objective[:1500]}\n"
+                            f"CURRENT OPERATION {operation['id']}:\n"
+                            f"{operation['instruction']}\n"
+                            f"AUTHORIZED PATHS:\n{job.allowed_paths}\n"
+                            f"RELEVANT SOURCE:\n{job.inspection[:4500]}\n"
+                            f"PREVIOUS TEST ERROR:\n{job.last_error[-3000:]}\n"
+                            "Make only this operation's changes. Do not commit, push, "
+                            "merge or edit any other file."
+                        )
+                        try:
+                            self._ask_agent(bridge, job_id, job, prompt, coding=True)
+                            changes = staged.changes()
+                            if not changes:
+                                raise RuntimeError("Operation produced no source changes")
+                            promoted = staged.promote()
+                        finally:
+                            del job._execution_workspace
+                    operation["modified_files"] = promoted
+                    operation["status"] = "implemented"
+                    self._clear_checkpoint(job_id, job)
+                    self._transition(job_id, job, "verify", "Staged edits promoted within scope")
                 elif stage == "verify":
                     if not job.test_command:
                         job.verification = {
-                            "status": "unverified",
-                            "reason": "No project test command supplied",
+                            "status": "unverified", "reason": "No verification command"
                         }
-                        self._transition(job_id, job, "complete", "Changes unverified")
+                        self._transition(job_id, job, "blocked", "Unverified assignment")
                         continue
+                    self._checkpoint(job_id, job, "verify")
                     result = _run_command(
                         job.test_command, root, timeout=self.settings.timeout_seconds
                     )
                     logs_dir = self.store.root / "logs"
                     logs_dir.mkdir(exist_ok=True)
-                    (logs_dir / f"{job_id}-verify.json").write_text(
-                        json.dumps(result, indent=2), encoding="utf-8"
+                    log_file = logs_dir / (
+                        f"{job_id}-step-{job.operation_index:02d}-"
+                        f"attempt-{job.attempts:02d}.json"
                     )
+                    log_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
                     job.verification = {
                         "status": "passed" if result["exit_code"] == 0 else "failed",
                         "exit_code": result["exit_code"],
                         "command": job.test_command,
-                        "log": f"logs/{job_id}-verify.json",
+                        "log": str(log_file.relative_to(self.store.root)),
+                        "operation_index": job.operation_index,
                     }
+                    self._clear_checkpoint(job_id, job)
                     if result["exit_code"] == 0:
-                        self._transition(job_id, job, "complete", "Tests passed")
+                        current = job.operations[job.operation_index]
+                        current["status"] = "verified"
+                        job.verified_operations.append(current["id"])
+                        job.operation_index += 1
+                        job.attempts = 0
+                        job.last_error = ""
+                        if job.operation_index == len(job.operations):
+                            self._transition(job_id, job, "complete", "All operations verified")
+                        else:
+                            upcoming = job.operations[job.operation_index]["instruction"]
+                            job.inspection = _inspection(
+                                root, job.objective + "\n" + upcoming
+                            )
+                            self._transition(job_id, job, "implement", "Next bounded operation")
                     elif job.attempts >= self.settings.max_correction_rounds:
                         self._transition(job_id, job, "blocked", "Correction limit reached")
                     else:
@@ -425,10 +596,12 @@ class Controller:
                         job.last_error = (
                             result["stderr"][-3500:] + "\n" + result["stdout"][-3000:]
                         )
-                        self._transition(job_id, job, "correct", "Tests failed")
+                        self._transition(job_id, job, "correct", "Verification failed")
                 else:
                     self._transition(job_id, job, "blocked", "Unknown stage")
-            job.complete = job.stage == "complete"
+            job.complete = (job.stage == "complete" and bool(job.operations)
+                            and all(x["status"] == "verified" for x in job.operations)
+                            and job.verification.get("status") == "passed")
             self.store.save(job_id, job)
             return job
         except Exception as exc:
