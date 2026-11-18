@@ -231,6 +231,7 @@ class Controller:
     ) -> str:
         # All LLM requests go to our own loopback adapter, never a cloud provider.
         os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
+        os.environ["DO_NOT_TRACK"] = "1"
         from openhands.sdk import Agent, Conversation, LLM, Tool
         from openhands.sdk.conversation import get_agent_final_response
         from openhands.tools.file_editor import FileEditorTool
@@ -309,6 +310,15 @@ class Controller:
             timeout_seconds=self.settings.timeout_seconds,
         )
         bridge.ensure_model()
+        if bridge.supported_context is not None:
+            self.allocator.settings.max_context = min(
+                self.allocator.settings.max_context, bridge.supported_context
+            )
+            if self.allocator.settings.max_context < self.settings.context_profiles[0]:
+                raise RuntimeError("Installed Qwen context is below minimum profile")
+            self.allocator.current = min(
+                self.allocator.current, self.allocator.settings.max_context
+            )
         bridge.url = bridge.start()
         try:
             while job.stage not in {"complete", "blocked"}:
@@ -343,8 +353,11 @@ class Controller:
                         "Make the changes using the supplied tools. "
                         "Do not commit, push, merge, or modify unrelated files."
                     )
-                    self._ask_agent(bridge, job_id, job, prompt, coding=True)
-                    self._check_scope(job, before)
+                    try:
+                        self._ask_agent(bridge, job_id, job, prompt, coding=True)
+                    finally:
+                        # Even a failed agent call may have modified project files.
+                        self._check_scope(job, before)
                     self._transition(job_id, job, "verify", "Coding operation finished")
                 elif stage == "verify":
                     if not job.test_command:
