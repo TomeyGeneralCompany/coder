@@ -332,12 +332,14 @@ class Controller:
             # read-only root. Only the declared directories are writable.
             command = [
                 binary, "--die-with-parent", "--new-session",
-                "--unshare-user", "--unshare-pid",
+                "--unshare-user", "--unshare-pid", "--clearenv",
                 "--ro-bind", "/", "/",
                 "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
                 "--bind", str(conversations), str(conversations),
                 "--bind", str(outputs), str(outputs),
                 "--setenv", "HOME", "/tmp",
+                "--setenv", "PATH", os.environ.get("PATH", "/usr/bin:/bin"),
+                "--setenv", "LANG", "C.UTF-8",
                 "--setenv", "XDG_CACHE_HOME", "/tmp/.cache",
                 "--setenv", "PYTHONPATH", str(root),
                 "--setenv", "DO_NOT_TRACK", "1",
