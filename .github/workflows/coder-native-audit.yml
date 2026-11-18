@@ -1,0 +1,28 @@
+name: Coder native inference migration audit
+on:
+  push:
+    branches: [coder-native-ollama-remove-litellm]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enumerate remaining runtime LiteLLM imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root=Path("software-agent-sdk-main")
+          dirs=["openhands-sdk/openhands","openhands-tools/openhands","openhands-workspace/openhands","openhands-agent-server/openhands","coder_local"]
+          for directory in dirs:
+              for file in sorted((root/directory).rglob("*.py")):
+                  matches=[]
+                  for i,line in enumerate(file.read_text(errors="replace").splitlines(),1):
+                      if "litellm" in line.lower():
+                          matches.append(f"{i}:{line.strip()[:150]}")
+                  if matches:
+                      print(f"{file.relative_to(root)} ({len(matches)})")
+                      for item in matches[:8]:
+                          print("  "+item)
+          PY
