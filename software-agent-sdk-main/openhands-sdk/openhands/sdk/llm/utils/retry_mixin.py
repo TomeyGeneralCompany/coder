@@ -3,7 +3,7 @@ from collections.abc import Callable, Iterable
 from typing import Any, NoReturn, Protocol, cast, runtime_checkable
 from weakref import WeakKeyDictionary
 
-from litellm.exceptions import Timeout as LiteLLMTimeout
+from openhands.sdk.llm.native_ollama import OllamaTimeoutError as LiteLLMTimeout
 from tenacity import (
     RetryCallState,
     retry,
