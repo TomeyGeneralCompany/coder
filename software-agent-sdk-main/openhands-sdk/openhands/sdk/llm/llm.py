@@ -174,6 +174,19 @@ class LLM(BaseModel):
     def _model_features(self) -> ModelFeatures:
         return get_features(self.model)
 
+    def resolve_runtime_metadata(self, *args: Any, **kwargs: Any) -> None:
+        # The controller obtains installed-model context metadata directly
+        # from Ollama; no hosted provider route is available to resolve.
+        return None
+
+    async def aresolve_runtime_metadata(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    @property
+    def resolved_runtime_metadata(self) -> None:
+        return None
+
+
     def vision_is_active(self) -> bool:
         return False
 
