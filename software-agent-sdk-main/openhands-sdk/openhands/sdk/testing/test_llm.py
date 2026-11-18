@@ -33,7 +33,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from litellm.types.utils import Choices, Message as LiteLLMMessage, ModelResponse
+from openhands.sdk.llm.native_types import Choice as Choices, NativeMessage as LiteLLMMessage, ModelResponse
 from pydantic import ConfigDict, Field, PrivateAttr
 
 from openhands.sdk.llm.llm import LLM
