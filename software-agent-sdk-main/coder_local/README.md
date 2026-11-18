@@ -51,9 +51,18 @@ Coder initializes only native `qwen3:4b` inference on loopback; there
 is no LiteLLM transport, dependency, or OpenAI-compatible bridge. Host-model
 credentials, proxy fallback, and alternative models are not accepted by the
 native `LLM` constructor. The sandboxed worker clears inherited environment
-variables and forbids external provider selection. Some upstream SDK settings
-and profile compatibility code remains for reading older configuration formats;
-this is not an active inference path.
+variables and forbids external provider selection. Cloud-provider
+credential storage and API endpoints, subscription token refresh, external
+LLM critic and multi-model routing tools have been removed. Local Qwen profiles
+remain available for saving different context and output settings.
+
+### Profile migration
+Previously saved hosted-provider profiles are **not** deleted or rewritten
+by an upgrade. They can appear in the profile inventory for identification,
+but attempting to activate one fails with a clear local-only error. Recreate
+a profile with model `qwen3:4b` and an Ollama loopback endpoint for continued
+use. Existing encrypted credential files are not automatically destroyed.
+Native profiles use no API key, subscription or provider connection.
 
 ## Local dashboard and queue
 
