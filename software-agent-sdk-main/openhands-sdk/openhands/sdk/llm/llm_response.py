@@ -8,8 +8,7 @@ with LiteLLM types.
 import warnings
 from typing import ClassVar
 
-from litellm import ResponsesAPIResponse
-from litellm.types.utils import ModelResponse
+from openhands.sdk.llm.native_types import ModelResponse
 from pydantic import BaseModel, ConfigDict
 
 from openhands.sdk.llm.message import Message
@@ -41,7 +40,7 @@ class LLMResponse(BaseModel):
 
     message: Message
     metrics: MetricsSnapshot
-    raw_response: ModelResponse | ResponsesAPIResponse
+    raw_response: ModelResponse
 
     model_config: ClassVar[ConfigDict] = ConfigDict(arbitrary_types_allowed=True)
 
