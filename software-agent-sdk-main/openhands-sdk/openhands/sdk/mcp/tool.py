@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from openhands.sdk.conversation import LocalConversation
 
 import mcp.types
-from litellm import ChatCompletionToolParam
+from openhands.sdk.llm.native_types import ChatCompletionToolParam
 from openai.types.responses import FunctionToolParam
 from pydantic import (
     Field,
