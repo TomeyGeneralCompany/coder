@@ -58,7 +58,7 @@ jobs:
         run: uv sync --frozen --no-dev
       - name: Show remaining indirect LiteLLM dependency parents
         working-directory: software-agent-sdk-main
-        run: uv tree --invert litellm || true
+        run: uv tree --invert --package litellm || true
       - name: Test actual SDK local-only transport
         working-directory: software-agent-sdk-main
         env:
