@@ -2,7 +2,7 @@
 
 from typing import Any, TypeVar
 
-from litellm.types.utils import Message as LiteLLMMessage
+from openhands.sdk.llm.native_types import NativeMessage as LiteLLMMessage
 from pydantic import BaseModel
 from tom_swe.generation.generate import LLMClient
 from tom_swe.generation.output_parsers import PydanticOutputParser
