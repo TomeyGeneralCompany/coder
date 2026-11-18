@@ -32,6 +32,7 @@ class OllamaBridge:
         self.context_tokens = context_tokens
         self.output_tokens = output_tokens
         self.timeout_seconds = timeout_seconds
+        self.supported_context: int | None = None
         self._lock = threading.RLock()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -56,6 +57,24 @@ class OllamaBridge:
                 f"Model {self.model!r} not installed in local Ollama; "
                 f"available: {sorted(names)}"
             )
+        # Model metadata is advisory: some Ollama versions do not return it.
+        try:
+            req = urllib.request.Request(
+                self.ollama_url + "/api/show",
+                data=json.dumps({"model": self.model}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as response:
+                info = json.load(response).get("model_info") or {}
+            limits = [
+                value for name, value in info.items()
+                if name.endswith(".context_length")
+                and isinstance(value, int) and value > 0
+            ]
+            self.supported_context = max(limits) if limits else None
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            self.supported_context = None
 
     def _ollama_get(self, path: str) -> dict[str, Any]:
         with urllib.request.urlopen(
