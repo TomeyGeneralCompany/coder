@@ -86,6 +86,48 @@ class ControllerFlowTests(unittest.TestCase):
         self.assertEqual(result.verification["status"], "failed")
         self.assertEqual(result.attempts, 2)
 
+    def test_multi_operation_plan_verifies_every_stage(self):
+        self.store.save("job", Job(
+            project=str(self.project),
+            objective="Make two changes",
+            allowed_paths=["src"],
+            test_command=[
+                "python", "-c",
+                "from src.main import value; assert value >= 1",
+            ],
+        ))
+
+        def stub(_bridge, _id, job, _prompt, *, coding):
+            if not coding:
+                return '["Set value to one", "Set value to two"]'
+            path = Path(job._execution_workspace) / "src" / "main.py"
+            path.write_text(f"value = {job.operation_index + 1}\\n")
+            return "Applied current operation"
+
+        result = self.run_with_stub(stub)
+        self.assertTrue(result.complete)
+        self.assertEqual(result.operation_index, 2)
+        self.assertEqual(result.verified_operations, ["step-01", "step-02"])
+        self.assertEqual(
+            [item["status"] for item in result.operations],
+            ["verified", "verified"],
+        )
+        self.assertEqual((self.project / "src/main.py").read_text(), "value = 2\\n")
+
+    def test_legacy_unverified_complete_state_becomes_blocked(self):
+        self.store.save("job", Job(
+            project=str(self.project),
+            objective="Legacy task",
+            stage="complete",
+            complete=True,
+            verification={"status": "unverified"},
+        ))
+        result = self.run_with_stub(
+            lambda *_args, **_kwargs: "unused"
+        )
+        self.assertFalse(result.complete)
+        self.assertEqual(result.stage, "blocked")
+
     def test_detects_edit_outside_authorized_scope(self):
         self.store.save("job", Job(
             project=str(self.project), objective="Restricted edit",
