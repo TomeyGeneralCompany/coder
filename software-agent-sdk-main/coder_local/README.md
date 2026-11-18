@@ -8,6 +8,7 @@ operation. It does not configure or fall back to any hosted AI service.
 ## Requirements
 
 - Python 3.12+ with the OpenHands workspace dependencies installed
+- Bubblewrap (`bwrap`) with working Linux user and mount namespaces
 - Ollama running on `127.0.0.1:11434`
 - The Ollama model `qwen3:4b` already installed
 - A local working directory for the assigned project
@@ -20,25 +21,39 @@ uv run python -m coder_local run --project "$HOME/my-website" \
   --task "Fix the navigation menu" --test "npm test" --allow src --allow tests
 ```
 
-The command returns the assignment id and stage. Recover after interruption
-with `uv run python -m coder_local resume --id <id>`; inspect saved state
-without invoking a model with `uv run python -m coder_local status --id <id>`.
+The command returns the assignment id and stage. Inspect saved state without
+invoking a model with `uv run python -m coder_local status --id <id>`.
+When an operation is interrupted, **Coder does not replay it automatically**.
+Inspect the project and checkpoint, then explicitly reconcile a unchanged
+project with `uv run python -m coder_local reconcile --id <id>`, followed by
+`uv run python -m coder_local resume --id <id>`. Reconciliation refuses when
+project files differ from the pre-operation checkpoint.
 
 The program keeps assignment state in `~/.local/share/coder/jobs/`, outside the
-working repository. Source changes are **not** automatically committed, pushed,
-merged, or deployed. `--allow` restricts changes to listed paths when used.
-Use a clean working tree for reliable scope enforcement. Omitting `--test`
-leaves completion unverified; it does not establish that the software works.
+working repository. Source changes are **not** automatically committed, pushed, merged, or
+deployed. Both `--allow` and `--test` are required for work to proceed:
+Coder blocks assignments with no explicit allowed paths or verification command.
+
+Code changes are made in a disposable staging copy and checked against the
+allowed paths before promotion to the original project. The actual OpenHands
+worker runs in Bubblewrap with the host filesystem read-only. Only staging,
+conversation persistence, and the result-artifact directory are writable
+inside the worker. If Bubblewrap cannot start, Coder refuses the operation.
+Test commands submitted by the user run on the original project after
+promotion; configure those commands with care because they have the user's
+normal filesystem permissions.
 
 The default maximum candidate context is 32,768 tokens; set
 `--max-context` to change it. The controller selects from 4K, 8K, 16K,
 32K, and 64K allocations up to the configured cap, with model request
 options transmitted to Ollama natively.
 
-The SDK and its many provider integrations remain installed as library code:
-this Coder entry point uses **only** the loopback inference route. Removing
-shared upstream provider code without dependency and regression verification
-would risk breaking the working SDK.
+Coder sets `CODER_LOCAL_ONLY=1` inside its worker. The SDK enforces the
+loopback Qwen3:4B model and rejects hosted model names, remote endpoints,
+provider connections, subscriptions, AWS model credentials and LLM fallbacks.
+Coder clears inherited environment variables in the worker. Upstream SDK
+provider implementation modules and shared LiteLLM dependencies remain
+present; the provider paths are disabled for Coder, not physically deleted.
 
 ## Local dashboard and queue
 
@@ -63,8 +78,13 @@ providers are neither listed nor selectable through this interface.
 
 - The 64K profile is a candidate, not a confirmed context capacity of the
   installed Qwen build or laptop.
-- Stage information is durable, but a subprocess interrupted during an
-  in-flight tool action may require inspection before a retry.
+- All development plans must be valid JSON lists of small operations; each
+  operation advances only after the configured verification command passes.
+- Interrupted operations remain blocked until explicit checkpoint reconciliation.
+  Coder does not automatically replay a potentially side-effecting command.
+- The strict filesystem sandbox keeps host files read-only to the agent worker,
+  but shares the host network so Ollama on loopback remains reachable. Network
+  restrictions are not implied by the filesystem sandbox.
 - Testing the integration against the actual local Ollama installation remains
   necessary.
 - The SDK archive contains a TypeScript API client but not the entire
