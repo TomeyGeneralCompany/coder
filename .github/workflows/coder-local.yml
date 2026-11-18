@@ -4,6 +4,9 @@ on:
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
+      - 'software-agent-sdk-main/uv.lock'
+      - 'software-agent-sdk-main/openhands-sdk/pyproject.toml'
+      - 'software-agent-sdk-main/openhands-tools/pyproject.toml'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/llm.py'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/utils/local_only.py'
       - 'software-agent-sdk-main/openhands-sdk/openhands/sdk/llm/native_ollama.py'
