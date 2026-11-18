@@ -87,7 +87,30 @@ def create_server(
             self.wfile.write(body)
 
         def do_GET(self) -> None:
-            if self.path == "/health":
+            if self.path == "/":
+                body = Path(__file__).with_name("index.html").read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif self.path == "/jobs":
+                records = []
+                for path in sorted(store.root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+                    try:
+                        job = store.load(path.stem)
+                        records.append({
+                            "id": path.stem,
+                            "objective": job.objective[:160],
+                            "stage": job.stage,
+                            "context_tokens": job.context_tokens,
+                            "verification_status": job.verification.get("status"),
+                        })
+                    except (OSError, ValueError, TypeError):
+                        continue
+                self._send(200, {"jobs": records[:100]})
+            elif self.path == "/health":
                 with jobs.lock:
                     active = jobs.active
                 self._send(200, {
@@ -170,7 +193,7 @@ def main() -> None:
         JobStore(args.state_dir),
         port=args.port,
     )
-    print(f"Coder local API at http://127.0.0.1:{args.port}")
+    print(f"Coder dashboard at http://127.0.0.1:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
