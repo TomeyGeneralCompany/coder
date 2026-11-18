@@ -37,6 +37,9 @@ def main() -> int:
     resume = sub.add_parser("resume", help="Resume an interrupted assignment")
     resume.add_argument("--id", required=True)
 
+    reconcile = sub.add_parser("reconcile", help="Explicitly reconcile an interrupted stage")
+    reconcile.add_argument("--id", required=True)
+
     status = sub.add_parser("status", help="Read persisted state without running the model")
     status.add_argument("--id", required=True)
 
@@ -50,6 +53,14 @@ def main() -> int:
         model=args.model, ollama_url=args.ollama, max_context=args.max_context
     )
     controller = Controller(settings, store)
+    if args.command == "reconcile":
+        try:
+            job = controller.reconcile(args.id)
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(json.dumps({"id": args.id, "error": str(exc)}))
+            return 2
+        print(json.dumps({"id": args.id, "stage": job.stage, "reconciled": True}))
+        return 0
 
     if args.command == "run":
         project = args.project.expanduser().resolve()
