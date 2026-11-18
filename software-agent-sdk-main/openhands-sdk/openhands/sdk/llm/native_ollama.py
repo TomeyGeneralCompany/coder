@@ -219,7 +219,7 @@ class NativeOllamaClient:
 
     def show(self) -> dict[str, Any]:
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=self.timeout, trust_env=False) as client:
                 response = client.post(self.url + "/api/show", json={"model": self.model})
                 self._raise_status(response)
                 return response.json()
@@ -246,7 +246,7 @@ class NativeOllamaClient:
         payload = self._request(messages, num_ctx=num_ctx, num_predict=num_predict,
                                 tools=tools, temperature=temperature)
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=self.timeout, trust_env=False) as client:
                 response = client.post(self.url + "/api/chat", json=payload)
                 self._raise_status(response)
                 return _complete(response.json())
@@ -276,7 +276,7 @@ class NativeOllamaClient:
         payload = self._request(messages, num_ctx=num_ctx, num_predict=num_predict,
                                 tools=tools, stream=True)
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=self.timeout, trust_env=False) as client:
                 with client.stream("POST", self.url + "/api/chat", json=payload) as response:
                     self._raise_status(response)
                     saw_done = False
@@ -309,7 +309,7 @@ class NativeOllamaClient:
         payload = self._request(messages, num_ctx=num_ctx, num_predict=num_predict,
                                 tools=tools, stream=True)
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                 async with client.stream("POST", self.url + "/api/chat", json=payload) as response:
                     self._raise_status(response)
                     saw_done = False
