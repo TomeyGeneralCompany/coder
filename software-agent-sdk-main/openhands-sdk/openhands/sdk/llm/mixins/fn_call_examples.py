@@ -9,7 +9,7 @@ don't clutter the algorithmic code.
 import sys
 from typing import Final
 
-from litellm import ChatCompletionToolParam
+from openhands.sdk.llm.native_types import ChatCompletionToolParam
 
 
 # Tool name constants used to map tool definitions to example keys
