@@ -1,0 +1,84 @@
+---
+name: PR Artifacts
+
+on:
+    pull_request_target:
+        types: [opened, synchronize, reopened]
+        branches: [main]
+
+jobs:
+  # Inspect the fork through the API; never check out untrusted code with a write token.
+    check-pr-artifacts:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
+        steps:
+            - name: Post or update PR comment
+              uses: actions/github-script@v9
+              with:
+                  script: |
+                      const marker = '<!-- pr-artifacts-notice -->';
+                      const files = await github.paginate(
+                        github.rest.pulls.listFiles,
+                        {
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          pull_number: context.payload.pull_request.number,
+                          per_page: 100,
+                        },
+                      );
+                      // The base can already carry merged artifacts; count only this PR's.
+                      const exists = files.some(
+                        f => f.status !== 'removed' && f.filename.split('/')[0] === '.pr',
+                      );
+
+                      const comments = await github.paginate(
+                        github.rest.issues.listComments,
+                        {
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                          per_page: 100,
+                        },
+                      );
+                      const existing = comments.find(c => c.body.includes(marker));
+
+                      if (!exists) {
+                        if (existing) {
+                          await github.rest.issues.updateComment({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            comment_id: existing.id,
+                            body: `${marker}
+                            ✅ **PR Artifacts Cleaned Up**
+
+                            This PR no longer adds or changes files under \`.pr/\`.
+                            `,
+                          });
+                        }
+                        return;
+                      }
+
+                      const body = `${marker}
+                      📁 **PR Artifacts Notice**
+
+                      This PR adds or changes temporary PR-specific documents under \`.pr/\`. They stay available on this branch for review; after merge, the **next release PR removes \`.pr/\` from main**.
+                      `;
+
+                      core.warning('.pr/ directory contains temporary PR-only artifacts');
+                      if (existing) {
+                        await github.rest.issues.updateComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          comment_id: existing.id,
+                          body: body,
+                        });
+                      } else {
+                        await github.rest.issues.createComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                          body: body,
+                        });
+                      }

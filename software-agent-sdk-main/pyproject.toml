@@ -1,0 +1,146 @@
+# UV workspace configuration
+[tool.uv.workspace]
+members = ["openhands-sdk", "openhands-tools", "openhands-workspace", "openhands-agent-server"]
+
+# Security: Apply workspace-wide dependency guardrails.
+[tool.uv]
+exclude-newer = "7 days"  # Avoid packages uploaded in the last 7 days.
+exclude-newer-package = { lmnr = "2026-08-23T00:00:00Z", certifi = "2026-10-21T00:00:00Z", pip = "2026-10-21T00:00:00Z" }  # lmnr: allow 0.7.60 streaming-token fix through the 7-day guardrail; certifi/pip: allow eMudhra CA distrust fix (GHSA-6q48-6c7w-9gw2) through the 7-day guardrail
+constraint-dependencies = [
+    "nodejs-wheel-binaries>=24,<25",
+    "starlette>=0.49.1",
+    "aiohttp>=3.13.3",
+    "urllib3>=2.8.0",
+    "protobuf>=6.33.5",
+    "pillow>=13.0.0",
+    "orjson>=3.11.7",
+    "rich>=14.3.3", # Version 14.3.2 essentially has a denial-of-service vulnerability which is outlined in https://github.com/Textualize/rich/issues/3958
+    "lupa>=2.8",
+    "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",  # 49.0.0 dropped x86_64 macOS wheels; release-binaries.yml still builds on macos-15-intel
+    "litellm==1.105.1",  # first stable release exposing litellm.systemone is 1.104.3
+    "anyio>=4.14.2",
+    "pyjwt>=2.14.0",
+]
+
+# Workspace sources for intra-repo dependencies
+[tool.uv.sources]
+openhands-sdk = { workspace = true }
+openhands-tools = { workspace = true }
+openhands-workspace = { workspace = true }
+openhands-agent-server = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "packaging>=26.3",
+    "pillow>=13.0.0",
+    "psutil>=7.2.2",
+    "pyright[nodejs]>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.4",
+    "pycodestyle>=2.15.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "pytest-forked>=1.7.5",
+    "pytest-xdist>=3.6.0",
+    "tabulate>=0.10.0",
+    "pyinstaller>=6.22.3",
+    "streamlit>=1.67.0",
+    "pytest-timeout>=2.4.0",
+    "griffe[pypi]>=2.4.1",
+]
+
+# Ruff configuration
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (includes F841: unused-variable)
+    "I",    # isort
+    "UP",   # pyupgrade
+    "ARG",  # flake8-unused-arguments
+    "ASYNC",  # flake8-async: no blocking calls on the event loop
+]
+# Enforce rules that catch mutable defaults and related pitfalls
+# - B006: mutable-argument-default
+# - B008: function-call-in-default-argument
+# - B039: mutable-contextvar-default
+# - RUF012: mutable-class-default
+extend-select = ["B006", "B008", "B039", "RUF012"]
+# Keep existing string-backed enums: StrEnum can change their string representation.
+ignore = ["UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files often have unused arguments (fixtures, mocks, interface implementations)
+# and poll or block on purpose while driving threads and subprocesses.
+"tests/**/*.py" = ["ARG", "ASYNC"]
+# Benchmark drivers start and probe an agent-server subprocess; their setup blocks
+# on purpose, outside the timed sections.
+"scripts/agent_server_benchmarks/*.py" = ["ASYNC"]
+
+
+# Allowlist safe default calls for flake8-bugbear rules (e.g., FastAPI Depends)
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.params.Depends",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["openhands"]
+combine-as-imports = true
+force-single-line = false
+lines-after-imports = 2
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = [
+    "tests"
+]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -m 'not stress and not acp_live and not docker_live'"
+asyncio_mode = "auto"
+markers = [
+    "stress: stress / scale tests, deselected by default. Run with `pytest -m stress` (see tests/agent_server/stress/__init__.py for details).",
+    "acp_live: live ACP conformance/pin-installability tests that launch real npx subprocesses and hit the npm registry, deselected by default. Run with `pytest -m acp_live` (see tests/sdk/agent/test_acp_conformance.py).",
+    "docker_live: scenarios against a real Docker daemon and agent-server image, deselected by default. Run with `pytest -m docker_live` (see tests/agent_server/docker_runtime/STORAGE_SCENARIO.md).",
+]
+
+# Pyright configuration for PEP 420 namespace packages
+# This is needed for VSCode to properly resolve imports across multiple packages in the monorepo
+[tool.pyright]
+include = [
+    "openhands-sdk",
+    "openhands-tools",
+    "openhands-workspace",
+    "openhands-agent-server",
+    "examples",
+    "tests",
+    "scripts"
+]
+extraPaths = [
+    "openhands-sdk",
+    "openhands-tools",
+    "openhands-workspace",
+    "openhands-agent-server"
+]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+useLibraryCodeForTypes = true
+typeCheckingMode = "standard"
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
