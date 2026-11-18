@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coder — Local Development</title>
+<style>
+:root { color-scheme: dark; font-family: system-ui,sans-serif; background:#10191b; color:#eef5f3; }
+* { box-sizing:border-box; }
+body { margin:0 auto; max-width:1120px; padding:28px 22px; }
+header { display:flex; justify-content:space-between; align-items:center; gap:20px; border-bottom:1px solid #34504f; padding-bottom:20px; }
+h1 { font-size:30px; margin:0; }
+h2 { font-size:19px; }
+small,.muted { color:#adc6c2; }
+main { display:grid; grid-template-columns:minmax(250px,1fr) minmax(350px,1.6fr); gap:24px; margin-top:26px; }
+section { background:#172629; border:1px solid #34504f; border-radius:12px; padding:21px; }
+label { display:block; margin:15px 0 6px; font-weight:600; font-size:13px; }
+input,textarea { width:100%; background:#0e191b; color:white; padding:11px; border:1px solid #53716c; border-radius:7px; font:inherit; }
+textarea { min-height:110px; resize:vertical; }
+button { background:#d8b662; color:#0d1a1c; border:0; border-radius:7px; font-weight:700; padding:11px 20px; cursor:pointer; }
+button:disabled { opacity:.4; cursor:default; }
+table { width:100%; border-collapse:collapse; }
+th,td { padding:11px 7px; text-align:left; border-bottom:1px solid #34504f; font-size:13px; vertical-align:top; }
+code { font-size:12px; color:#a4d7d0; }
+.status { color:#d8b662; font-size:13px; }
+#error { color:#ffaca8; white-space:pre-wrap; }
+@media(max-width:770px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div><h1>Coder</h1><small>Local Qwen software development</small></div>
+<div id="health" class="status" aria-live="polite">Checking local service…</div></header>
+<main>
+<section>
+<h2>New assignment</h2>
+<form id="task">
+<label for="project">Local project directory</label>
+<input id="project" placeholder="/home/user/projects/website" required>
+<label for="objective">Development assignment</label>
+<textarea id="objective" placeholder="Describe the specific change to make…" required></textarea>
+<label for="test">Verification command</label>
+<input id="test" placeholder="python -m pytest -q">
+<label for="allow">Allowed paths (one relative path per line, optional)</label>
+<textarea id="allow" placeholder="src&#10;tests" style="min-height:65px"></textarea>
+<p><small>Runs locally. No automatic commit, push, merge, or deployment.</small></p>
+<button type="submit" id="submit">Queue assignment</button>
+<p id="error" role="alert"></p>
+</form>
+</section>
+<section>
+<h2>Assignments</h2>
+<p class="muted">One development job runs at a time; other assignments remain queued.</p>
+<table><thead><tr><th>Task</th><th>Stage</th><th>Context</th><th>Result</th></tr></thead>
+<tbody id="jobs"><tr><td colspan="4">No assignments loaded</td></tr></tbody></table>
+</section>
+</main>
+<script>
+const byId = id => document.getElementById(id);
+const escapeText = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+async function api(url, options) {
+  const response = await fetch(url, options);
+  const result = await response.json();
+  if (!response.ok) throw Error(result.error || 'Request failed');
+  return result;
+}
+async function refresh() {
+  try {
+    const pair = await Promise.all([api('/health'), api('/jobs')]);
+    const health = pair[0], jobs = pair[1];
+    byId('health').textContent = health.model + ' • ' + (health.active_job ? 'Working' : 'Idle') + ' • ' + health.queued_count + ' queued';
+    byId('jobs').innerHTML = jobs.jobs.length ? jobs.jobs.map(j =>
+      '<tr><td><strong>' + escapeText(j.objective) + '</strong><div><code>' + escapeText(j.id) + '</code></div></td>' +
+      '<td>' + escapeText(j.stage) + '</td><td>' + escapeText(j.context_tokens) + '</td>' +
+      '<td>' + escapeText(j.verification_status || '—') + '</td></tr>'
+    ).join('') : '<tr><td colspan="4">No assignments yet</td></tr>';
+  } catch(err) { byId('health').textContent = String(err); }
+}
+byId('task').addEventListener('submit', async event => {
+  event.preventDefault();
+  byId('submit').disabled = true;
+  byId('error').textContent = '';
+  try {
+    const result = await api('/jobs', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        project:byId('project').value,
+        objective:byId('objective').value,
+        test_command:byId('test').value.trim() ? byId('test').value.trim().split(/\s+/) : [],
+        allowed_paths:byId('allow').value.split('\n').map(x=>x.trim()).filter(Boolean)
+      })
+    });
+    byId('error').textContent = 'Queued: ' + result.id;
+    byId('objective').value = '';
+    await refresh();
+  } catch(err){ byId('error').textContent = String(err); }
+  finally { byId('submit').disabled = false; }
+});
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>
