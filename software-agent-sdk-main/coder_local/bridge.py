@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 from typing import Any
 
 
@@ -25,8 +26,20 @@ class OllamaBridge:
         output_tokens: int = 1024,
         timeout_seconds: int = 900,
     ) -> None:
-        if not ollama_url.startswith(("http://127.0.0.1:", "http://localhost:")):
-            raise ValueError("Ollama endpoint must be on loopback")
+        address = urlsplit(ollama_url)
+        if (
+            address.scheme != "http"
+            or address.hostname not in {"127.0.0.1", "localhost"}
+            or address.port is None
+            or address.username is not None
+            or address.password is not None
+            or address.path not in {"", "/"}
+            or address.query
+            or address.fragment
+        ):
+            raise ValueError("Ollama endpoint must be an HTTP loopback URL with a port")
+        if model != "qwen3:4b":
+            raise ValueError("Coder is configured for local qwen3:4b only")
         self.model = model
         self.ollama_url = ollama_url.rstrip("/")
         self.context_tokens = context_tokens
