@@ -5,7 +5,7 @@ on:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
   push:
-    branches: [coder-local-qwen-stage-gates]
+    branches: [coder-local-qwen-stage-gates, coder-harden-provider-stages-checkpoints-scope-verification]
     paths:
       - 'software-agent-sdk-main/coder_local/**'
       - '.github/workflows/coder-local.yml'
