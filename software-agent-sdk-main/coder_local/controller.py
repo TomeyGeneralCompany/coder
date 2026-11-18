@@ -45,6 +45,9 @@ class Settings:
     timeout_seconds: int = 1200
 
     def validate(self) -> None:
+        if self.model != "qwen3:4b":
+            raise ValueError("Coder uses only the local qwen3:4b model")
+        OllamaBridge(model=self.model, ollama_url=self.ollama_url)
         if not self.context_profiles or tuple(sorted(set(self.context_profiles))) != self.context_profiles:
             raise ValueError("context_profiles must be sorted, distinct, and nonempty")
         if self.max_context < self.context_profiles[0]:
@@ -255,7 +258,14 @@ class Controller:
         """Require a bounded, explicit task list; malformed model output blocks."""
         text = response.strip()
         if text.startswith("```"):
-            text = re.sub(r"^\x60{3}(?:json)?\\s*|\\s*\x60{3}$", "", text)
+            lines = text.splitlines()
+            if (
+                len(lines) < 3
+                or lines[0].strip() not in {"```", "```json"}
+                or lines[-1].strip() != "```"
+            ):
+                raise ValueError("Malformed fenced JSON plan")
+            text = "\n".join(lines[1:-1]).strip()
         payload = json.loads(text)
         if not isinstance(payload, list) or not 1 <= len(payload) <= 30:
             raise ValueError("Plan must contain 1 to 30 operations")
