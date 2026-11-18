@@ -345,6 +345,16 @@ class Controller:
                 "--unshare-user", "--unshare-pid", "--clearenv",
                 "--ro-bind", "/", "/",
                 "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+            ]
+            # A temporary state directory may itself live under /tmp. Restore
+            # its mount-point parents inside the otherwise-private /tmp.
+            if self.store.root.is_relative_to(Path("/tmp")):
+                for parent in reversed(self.store.root.parents):
+                    if parent != Path("/tmp") and parent.is_relative_to(Path("/tmp")):
+                        command.extend(["--dir", str(parent)])
+                command.extend(["--dir", str(self.store.root)])
+            command.extend([
+                "--ro-bind", str(self.store.root), str(self.store.root),
                 "--bind", str(conversations), str(conversations),
                 "--bind", str(outputs), str(outputs),
                 "--setenv", "HOME", "/tmp",
@@ -356,7 +366,7 @@ class Controller:
                 "--setenv", "CODER_LOCAL_ONLY", "1",
                 "--setenv", "ALLOW_SHORT_CONTEXT_WINDOWS", "1",
                 "--chdir", str(root),
-            ]
+            ])
             if coding:
                 # Writable staging is never the original project.
                 if not workspace.is_relative_to(self.store.root):
