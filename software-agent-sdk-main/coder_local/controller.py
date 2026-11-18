@@ -246,7 +246,10 @@ class Controller:
         os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
         os.environ["DO_NOT_TRACK"] = "1"
         from openhands.sdk import Agent, Conversation, LLM, Tool
-        from openhands.sdk.conversation import get_agent_final_response
+        from openhands.sdk.conversation import (
+            ConversationExecutionStatus,
+            get_agent_final_response,
+        )
         from openhands.tools.file_editor import FileEditorTool
         from openhands.tools.terminal import TerminalTool
 
@@ -292,8 +295,15 @@ class Controller:
         )
         conversation.send_message(instruction)
         conversation.run()
+        if conversation.state.execution_status != ConversationExecutionStatus.FINISHED:
+            raise RuntimeError(
+                "Agent did not finish its stage: "
+                + str(conversation.state.execution_status)
+            )
         response = get_agent_final_response(conversation.state.events)
-        return str(response or "")
+        if response is None:
+            raise RuntimeError("Agent finished without a recorded final response")
+        return str(response)
 
     def _check_scope(self, job: Job, before: dict[str, str]) -> None:
         if not job.allowed_paths:
