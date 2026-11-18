@@ -80,6 +80,7 @@ class NativeChatDelta:
     thinking: str | None = None
     tool_calls: tuple[NativeToolCall, ...] = ()
     done: bool = False
+    usage: NativeUsage | None = None
 
 
 def require_loopback(url: str) -> str:
@@ -292,6 +293,10 @@ class NativeOllamaClient:
                             thinking=message.get("thinking"),
                             tool_calls=_parse_calls(message),
                             done=done,
+                            usage=NativeUsage(
+                                prompt_tokens=max(0, int(data.get("prompt_eval_count") or 0)),
+                                completion_tokens=max(0, int(data.get("eval_count") or 0)),
+                            ) if done else None,
                         )
                     if not saw_done:
                         raise OllamaResponseError("Ollama stream ended before done event")
@@ -321,6 +326,10 @@ class NativeOllamaClient:
                             thinking=message.get("thinking"),
                             tool_calls=_parse_calls(message),
                             done=done,
+                            usage=NativeUsage(
+                                prompt_tokens=max(0, int(data.get("prompt_eval_count") or 0)),
+                                completion_tokens=max(0, int(data.get("eval_count") or 0)),
+                            ) if done else None,
                         )
                     if not saw_done:
                         raise OllamaResponseError("Ollama stream ended before done event")
