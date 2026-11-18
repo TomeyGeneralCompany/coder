@@ -343,6 +343,7 @@ class Controller:
                 "--setenv", "XDG_CACHE_HOME", "/tmp/.cache",
                 "--setenv", "PYTHONPATH", str(root),
                 "--setenv", "DO_NOT_TRACK", "1",
+                "--setenv", "CODER_LOCAL_ONLY", "1",
                 "--setenv", "ALLOW_SHORT_CONTEXT_WINDOWS", "1",
                 "--chdir", str(root),
             ]
