@@ -26,3 +26,6 @@ jobs:
                       for item in matches[:8]:
                           print("  "+item)
           PY
+      - name: Audit remaining provider source references
+        run: |
+          rg -n '(^|[[:space:]])(import litellm|from litellm)|from openhands.sdk.llm.(auth|decision|fallback_strategy|router)|from openhands.sdk.llm.utils.(model_info|litellm_provider|openhands_provider|runtime_metadata|image_delivery)' software-agent-sdk-main/openhands-sdk/openhands software-agent-sdk-main/openhands-tools/openhands software-agent-sdk-main/openhands-agent-server/openhands || true
