@@ -5,6 +5,7 @@ against the user-selected project, never against Coder's own source by default.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import shlex
 import subprocess
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -93,6 +95,17 @@ class JobStore:
 
     def load(self, job_id: str) -> Job:
         return Job(**json.loads(self.path(job_id).read_text(encoding="utf-8")))
+
+    @contextmanager
+    def execution_lock(self):
+        """Serializes active Coder jobs across CLI and HTTP service processes."""
+        lock_path = self.root / ".execution.lock"
+        with lock_path.open("a+") as file:
+            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
 
 def _run_command(arguments: list[str], cwd: Path, timeout: int = 300) -> dict[str, Any]:
@@ -297,6 +310,10 @@ class Controller:
                 raise RuntimeError(f"Change outside authorized paths: {path}")
 
     def run(self, job_id: str, *, resume: bool = False) -> Job:
+        with self.store.execution_lock():
+            return self._run_locked(job_id, resume=resume)
+
+    def _run_locked(self, job_id: str, *, resume: bool = False) -> Job:
         job = self.store.load(job_id)
         root = self._project(job)
         if job.stage == "complete":
