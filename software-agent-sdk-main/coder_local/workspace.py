@@ -23,7 +23,10 @@ MAX_ARGS = 80
 def project_directory(value: str) -> Path:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("Select a local repository directory")
-    project = Path(value).expanduser().resolve(strict=True)
+    try:
+        project = Path(value).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("The selected project directory does not exist") from exc
     if not project.is_dir():
         raise ValueError("The selected project path is not a directory")
     return project
@@ -81,7 +84,10 @@ def clone_repository(url: str, name: str, root: str | Path) -> dict:
     path = parts.path.strip("/")
     if path.endswith(".git"):
         path = path[:-4]
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", path):
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", path)
+        or any(part in {".", ".."} for part in path.split("/"))
+    ):
         raise ValueError("Expected https://github.com/owner/repository")
     default = path.split("/")[-1]
     folder = name.strip() if isinstance(name, str) else ""
