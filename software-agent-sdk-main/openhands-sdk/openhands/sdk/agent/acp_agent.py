@@ -1045,20 +1045,8 @@ def _extract_token_usage(
 def _estimate_cost_from_tokens(
     model: str, input_tokens: int, output_tokens: int
 ) -> float:
-    """Estimate cost from token counts using LiteLLM's pricing database.
-
-    Returns 0.0 if pricing is unavailable for the model.
-    """
-    try:
-        import litellm
-
-        cost_map = litellm.model_cost
-        info = cost_map.get(model, {})
-        input_cost = info.get("input_cost_per_token", 0) or 0
-        output_cost = info.get("output_cost_per_token", 0) or 0
-        return input_tokens * input_cost + output_tokens * output_cost
-    except Exception:
-        return 0.0
+    """No hosted inference charges exist for the local Coder model."""
+    return 0.0
 
 
 def _image_url_to_acp_block(url: str) -> ImageContentBlock | None:
