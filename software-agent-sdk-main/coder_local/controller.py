@@ -246,6 +246,7 @@ class Controller:
         os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
         os.environ["DO_NOT_TRACK"] = "1"
         from openhands.sdk import Agent, Conversation, LLM, Tool
+        from openhands.sdk.context.condenser import LLMSummarizingCondenser
         from openhands.sdk.conversation import (
             ConversationExecutionStatus,
             get_agent_final_response,
@@ -267,6 +268,7 @@ class Controller:
             api_mode="chat",
             max_input_tokens=ctx,
             max_output_tokens=min(self.settings.output_tokens, ctx // 3),
+            max_message_chars=4500,
             stream=False,
             num_retries=1,
             timeout=self.settings.timeout_seconds,
@@ -279,6 +281,12 @@ class Controller:
             llm=llm,
             tools=tools,
             tool_concurrency_limit=1,
+            condenser=LLMSummarizingCondenser(
+                llm=llm.model_copy(update={"usage_id": "condenser"}),
+                max_size=28,
+                keep_first=2,
+                max_tokens=max(2048, ctx - self.settings.output_tokens - 1024),
+            ),
             system_prompt=(
                 "You are a local software engineer. Follow the provided task scope. "
                 "Complete one bounded operation at a time. Do not use hosted AI services. "
