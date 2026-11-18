@@ -22,6 +22,7 @@ def main() -> int:
         raise ValueError("Model adapter must be loopback")
     os.environ["ALLOW_SHORT_CONTEXT_WINDOWS"] = "1"
     os.environ["DO_NOT_TRACK"] = "1"
+    os.environ["CODER_LOCAL_ONLY"] = "1"
     from openhands.sdk import Agent, Conversation, LLM, Tool
     from openhands.sdk.context.condenser import LLMSummarizingCondenser
     from openhands.sdk.conversation import (
