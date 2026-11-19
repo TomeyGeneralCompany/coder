@@ -13,10 +13,12 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any
 
-from coder_local.controller import Controller, Job, JobStore, Settings
+from coder_local.controller import Controller, Job, JobStore, Settings, parse_test_command
 from coder_local.__main__ import DEFAULT_STATE_DIR
+from coder_local.workspace import clone_repository, console_command, project_directory
 
 
 class JobQueue:
@@ -76,23 +78,52 @@ def create_server(
         raise ValueError("Coder HTTP API must bind to local loopback")
     settings.validate()
     jobs = JobQueue(settings, store)
+    projects_root = store.root.parent / "projects"
 
     class Handler(BaseHTTPRequestHandler):
+        def _trusted_request(self) -> bool:
+            """Reject browser cross-origin requests and DNS-rebinding hosts."""
+            host = self.headers.get("Host", "")
+            if host not in {
+                f"127.0.0.1:{self.server.server_port}",
+                f"localhost:{self.server.server_port}",
+            }:
+                return False
+            origin = self.headers.get("Origin")
+            if origin:
+                parts = urlsplit(origin)
+                if (
+                    parts.scheme != "http"
+                    or parts.hostname not in {"127.0.0.1", "localhost"}
+                    or parts.port != self.server.server_port
+                ):
+                    return False
+            return not (
+                self.command == "POST"
+                and self.headers.get("Sec-Fetch-Site") == "cross-site"
+            )
+
         def _send(self, status: int, data: dict[str, Any]) -> None:
             body = json.dumps(data).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
         def do_GET(self) -> None:
+            if not self._trusted_request():
+                self._send(403, {"error": "Loopback browser origin required"})
+                return
             if self.path == "/":
                 body = Path(__file__).with_name("index.html").read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -131,6 +162,14 @@ def create_server(
                 self._send(404, {"error": "Unknown route"})
 
         def do_POST(self) -> None:
+            if not self._trusted_request():
+                self._send(403, {"error": "Loopback browser origin required"})
+                return
+            # Cross-origin HTML forms cannot issue application/json POSTs;
+            # browsers require a CORS preflight, which this server never enables.
+            if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+                self._send(415, {"error": "JSON requests required"})
+                return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if not 0 < length <= 256_000:
@@ -138,7 +177,16 @@ def create_server(
                 data = json.loads(self.rfile.read(length))
                 if not isinstance(data, dict):
                     raise ValueError("Expected JSON object")
-                if self.path == "/jobs":
+                if self.path == "/workspace/inspect":
+                    directory = project_directory(data.get("project", ""))
+                    self._send(200, {"project": str(directory), "exists": True})
+                elif self.path == "/workspace/clone":
+                    result = clone_repository(data.get("url", ""), data.get("name", ""), projects_root)
+                    self._send(201, result)
+                elif self.path == "/workspace/command":
+                    result = console_command(data.get("project", ""), data.get("command", ""))
+                    self._send(200, result)
+                elif self.path == "/jobs":
                     project = Path(str(data["project"])).expanduser().resolve()
                     if not project.is_dir():
                         raise ValueError("Project directory does not exist")
@@ -146,12 +194,14 @@ def create_server(
                     if not objective:
                         raise ValueError("Objective is required")
                     test_command = data.get("test_command") or []
+                    if isinstance(test_command, str):
+                        test_command = parse_test_command(test_command)
                     allowed_paths = data.get("allowed_paths") or []
-                    if not isinstance(test_command, list) or not all(
+                    if not test_command or not isinstance(test_command, list) or not all(
                         isinstance(x, str) for x in test_command
                     ):
                         raise ValueError("test_command must be a list of strings")
-                    if not isinstance(allowed_paths, list) or not all(
+                    if not allowed_paths or not isinstance(allowed_paths, list) or not all(
                         isinstance(x, str) for x in allowed_paths
                     ):
                         raise ValueError("allowed_paths must be a list of strings")
@@ -182,6 +232,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Local Coder HTTP job service")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--open-browser", action="store_true")
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_DIR)
     parser.add_argument("--max-context", type=int, default=32768)
     parser.add_argument("--ollama", default="http://127.0.0.1:11434")
@@ -193,7 +244,11 @@ def main() -> None:
         JobStore(args.state_dir),
         port=args.port,
     )
-    print(f"Coder dashboard at http://127.0.0.1:{args.port}")
+    url = f"http://127.0.0.1:{server.server_port}"
+    print(f"Coder dashboard at {url}")
+    if args.open_browser:
+        import webbrowser
+        webbrowser.open(url, new=2)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

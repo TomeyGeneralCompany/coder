@@ -64,6 +64,51 @@ a profile with model `qwen3:4b` and an Ollama loopback endpoint for continued
 use. Existing encrypted credential files are not automatically destroyed.
 Native profiles use no API key, subscription or provider connection.
 
+## Desktop launcher and browser development studio
+
+Coder includes a normal Linux desktop/application-menu launcher for Zorin
+OS, Ubuntu, and other freedesktop-compatible desktops. After installing the
+repository's Python dependencies from `software-agent-sdk-main`, run:
+
+```bash
+uv run python -m coder_local.desktop
+```
+
+This installs `~/.local/share/applications/coder-local.desktop` and a
+`~/.local/bin/coder-local-studio` launcher. If the Desktop folder already
+exists it also installs `~/Desktop/Coder.desktop`. No `sudo` is needed.
+The launcher uses the existing checkout and its uv environment; it does not
+download arbitrary executables or change the existing Coder controller.
+
+Click **Coder** in the application menu (or on your desktop) to launch its
+local server and open `http://127.0.0.1:8765` in your default browser.
+If the server is already running, the shortcut opens the existing page.
+
+The browser studio provides:
+
+- **Repository selection:** supply an existing absolute project directory,
+  or clone a GitHub HTTPS repository into the state folder's `projects/`.
+- **Project command console:** run one explicitly entered command in the
+  selected project, such as `git status`, `git log -3` or `python -m pytest`.
+  This is a bounded command runner, not an interactive PTY: shell redirects,
+  pipelines, interactive prompts and persistent shell sessions are not
+  supported. Commands have a 45-second timeout and capped returned output.
+- **Task assignment:** enter the objective, verification command and explicitly
+  authorized relative file paths. Click **Go, my child** to queue the coding
+  job. AI source edits still run in disposable staging under Bubblewrap.
+- **Progress viewer:** inspect current stages, context allocation, saved
+  verification outcome and error state.
+
+**Command-console security:** human-entered terminal commands run with your
+normal Linux account permissions and are **not** Bubblewrap-restricted.
+Run only commands you trust. The agent's own code edits remain restricted by
+the existing scope, stage verification and staging safeguards. The HTTP API
+listens on loopback, validates local browser origin/Host, and requires JSON
+POST requests.
+
+Private GitHub repositories need appropriate pre-existing local Git
+authentication; the UI never asks for your GitHub token or stores passwords.
+
 ## Local dashboard and queue
 
 Start the local interface from `software-agent-sdk-main`:
@@ -72,10 +117,11 @@ Start the local interface from `software-agent-sdk-main`:
 uv run python -m coder_local.server
 ```
 
-Open `http://127.0.0.1:8765` on the same machine. The dashboard can submit
-assignments, display the active stage, context size and verification status.
+Open `http://127.0.0.1:8765` on the same machine. The dashboard can select repositories, run explicit local commands, submit
+assignments, and display the active stage, context size and verification status.
 Its API is bound to loopback only: `GET /health`, `GET /jobs`,
-`GET /jobs/<id>`, `POST /jobs`, and `POST /jobs/<id>/resume`. A single
+`GET /jobs/<id>`, `POST /workspace/inspect`, `POST /workspace/clone`,
+`POST /workspace/command`, `POST /jobs`, and `POST /jobs/<id>/resume`. A single
 local worker handles queued assignments, and a Linux file lock prevents
 multiple processes from running Coder jobs simultaneously.
 

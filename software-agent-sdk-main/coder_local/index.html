@@ -3,100 +3,170 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coder — Local Development</title>
+<title>Coder • Local Development Studio</title>
 <style>
-:root { color-scheme: dark; font-family: system-ui,sans-serif; background:#10191b; color:#eef5f3; }
-* { box-sizing:border-box; }
-body { margin:0 auto; max-width:1120px; padding:28px 22px; }
-header { display:flex; justify-content:space-between; align-items:center; gap:20px; border-bottom:1px solid #34504f; padding-bottom:20px; }
-h1 { font-size:30px; margin:0; }
-h2 { font-size:19px; }
-small,.muted { color:#adc6c2; }
-main { display:grid; grid-template-columns:minmax(250px,1fr) minmax(350px,1.6fr); gap:24px; margin-top:26px; }
-section { background:#172629; border:1px solid #34504f; border-radius:12px; padding:21px; }
-label { display:block; margin:15px 0 6px; font-weight:600; font-size:13px; }
-input,textarea { width:100%; background:#0e191b; color:white; padding:11px; border:1px solid #53716c; border-radius:7px; font:inherit; }
-textarea { min-height:110px; resize:vertical; }
-button { background:#d8b662; color:#0d1a1c; border:0; border-radius:7px; font-weight:700; padding:11px 20px; cursor:pointer; }
-button:disabled { opacity:.4; cursor:default; }
-table { width:100%; border-collapse:collapse; }
-th,td { padding:11px 7px; text-align:left; border-bottom:1px solid #34504f; font-size:13px; vertical-align:top; }
-code { font-size:12px; color:#a4d7d0; }
-.status { color:#d8b662; font-size:13px; }
-#error { color:#ffaca8; white-space:pre-wrap; }
-@media(max-width:770px){main{grid-template-columns:1fr}}
+:root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0b1518;color:#eaf4f1;--panel:#142429;--field:#09161a;--line:#31504e;--gold:#e2bd6b;--teal:#77cbbb;--muted:#a9c6c3}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:1400px;padding:24px}
+header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:5px 0 24px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:29px;letter-spacing:-1px}
+h2{font-size:19px;margin:0 0 12px}h3{font-size:15px}
+small,.muted{color:var(--muted)}
+.brand{display:flex;gap:14px;align-items:center}.monogram{display:grid;place-items:center;background:#134b45;border:2px solid var(--gold);color:var(--gold);font-weight:900;border-radius:13px;height:54px;width:54px;font-size:29px}
+#health{font-size:13px;color:var(--gold);text-align:right}
+.layout{display:grid;grid-template-columns:minmax(320px,1fr) minmax(390px,1.2fr);gap:19px;margin-top:22px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:21px;min-width:0}
+.wide{grid-column:1/-1}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:13px;margin:13px 0 7px;font-weight:650}
+input,textarea{font:inherit;background:var(--field);border:1px solid #527572;color:#fff;padding:11px;border-radius:7px;width:100%}
+input:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:1px}
+textarea{resize:vertical;min-height:98px}
+button{background:var(--gold);color:#132126;padding:11px 16px;border:0;border-radius:7px;cursor:pointer;font-weight:750}
+button.secondary{background:#244b49;color:#eaf4f1;border:1px solid #49716a}
+button:disabled{opacity:.48;cursor:default}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:15px}
+.pill{background:#1b4742;border:1px solid #47786f;padding:7px 12px;border-radius:999px;color:var(--teal);font-size:12px}
+.console{background:#061012;border:1px solid #3a5955;border-radius:9px;color:#bfecd9;font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace;min-height:210px;max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:16px}
+.console small{font:inherit}
+.console-row{display:flex;gap:10px;align-items:center}
+.console-row input{font-family:ui-monospace,Consolas,monospace}
+.help{font-size:12px;line-height:1.5;margin-top:9px;color:var(--muted)}
+.notice{min-height:22px;font-size:13px;white-space:pre-wrap;color:var(--teal)}
+.notice.bad{color:#ffa9a1}
+table{border-collapse:collapse;width:100%}
+td,th{padding:11px 9px;border-bottom:1px solid var(--line);font-size:13px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:650}
+td button{padding:5px 10px;font-size:12px}
+code{font-size:12px;color:var(--teal)}
+#job-detail{font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow:auto;max-height:240px;background:var(--field);padding:12px;border-radius:8px}
+@media(max-width:870px){.layout{grid-template-columns:1fr}.two{grid-template-columns:1fr}.wide{grid-column:auto}body{padding:14px}}
 </style>
 </head>
 <body>
-<header><div><h1>Coder</h1><small>Local Qwen software development</small></div>
-<div id="health" class="status" aria-live="polite">Checking local service…</div></header>
-<main>
-<section>
-<h2>New assignment</h2>
+<header>
+<div class="brand"><div class="monogram">C</div><div><h1>Coder</h1><small>Local Qwen software development • OpenHands</small></div></div>
+<div><div id="health" aria-live="polite">Connecting…</div><div style="text-align:right;margin-top:7px"><span class="pill">On-device only</span></div></div>
+</header>
+<div class="layout">
+<section class="panel">
+<h2>1. Choose a repository</h2>
+<p class="muted">Open an existing checkout or clone a GitHub repository into Coder's local projects folder.</p>
+<label for="project">Local repository directory</label>
+<input id="project" placeholder="/home/you/projects/LOTUS" autocomplete="off">
+<div class="actions"><button id="inspect" class="secondary" type="button">Use this folder</button><span class="pill" id="workspace">No workspace selected</span></div>
+<hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+<label for="clone-url">Or clone from GitHub</label>
+<input id="clone-url" placeholder="https://github.com/TomeyGeneralCompany/Isaiz-Computer-Tool" autocomplete="off">
+<label for="clone-name">Local folder name (optional)</label>
+<input id="clone-name" placeholder="LOTUS" autocomplete="off">
+<div class="actions"><button id="clone" class="secondary" type="button">Clone repository</button></div>
+<p class="help">Cloning uses your locally installed Git. Only GitHub HTTPS URLs are accepted; private repositories require Git credentials already configured on the computer.</p>
+<div id="workspace-note" class="notice" role="status"></div>
+</section>
+
+<section class="panel">
+<h2>2. Project terminal</h2>
+<p class="muted">Run individual terminal commands in the selected checkout. Useful for <code>git status</code>, inspecting files, and installing project dependencies.</p>
+<div class="console" id="console" role="log" aria-live="polite">Coder terminal ready.
+Choose a repository, then type a command below.
+
+This terminal runs commands as your Linux user.
+Coder's autonomous edits remain separately sandboxed.</div>
+<label for="command">Command</label>
+<div class="console-row"><input id="command" placeholder="git status --short" autocomplete="off" spellcheck="false"><button id="run-command" type="button">Run</button></div>
+<p class="help">One command per submission; no interactive prompts, pipelines or shell expansion. Output is capped and each command times out after 45 seconds. This manual console is not sandboxed—only run commands you trust.</p>
+<div id="command-note" class="notice" role="status"></div>
+</section>
+
+<section class="panel">
+<h2>3. Give Coder an assignment</h2>
 <form id="task">
-<label for="project">Local project directory</label>
-<input id="project" placeholder="/home/user/projects/website" required>
-<label for="objective">Development assignment</label>
-<textarea id="objective" placeholder="Describe the specific change to make…" required></textarea>
-<label for="test">Verification command</label>
-<input id="test" placeholder="python -m pytest -q">
-<label for="allow">Allowed paths (one relative path per line, optional)</label>
-<textarea id="allow" placeholder="src&#10;tests" style="min-height:65px"></textarea>
-<p><small>Runs locally. No automatic commit, push, merge, or deployment.</small></p>
-<button type="submit" id="submit">Queue assignment</button>
-<p id="error" role="alert"></p>
+<label for="objective">What should Coder do?</label>
+<textarea id="objective" placeholder="Inspect the LOTUS ANALYZE handoff and repair the failing lead-context regression, without unrelated changes…" required></textarea>
+<label for="test">Verification command (required)</label>
+<input id="test" placeholder="python -m pytest tests/test_handoff.py -q" required>
+<label for="allow">Allowed project paths (required; one relative path per line)</label>
+<textarea id="allow" style="min-height:76px" placeholder="src&#10;tests" required></textarea>
+<div class="actions"><button id="submit" type="submit">Go, my child</button></div>
+<p class="help">Coder will create a staged copy, limit file changes to your allowed paths, run verification, and save checkpoints. It will not automatically commit, push, merge, or deploy.</p>
+<div id="task-note" class="notice" role="status"></div>
 </form>
 </section>
-<section>
-<h2>Assignments</h2>
-<p class="muted">One development job runs at a time; other assignments remain queued.</p>
-<table><thead><tr><th>Task</th><th>Stage</th><th>Context</th><th>Result</th></tr></thead>
-<tbody id="jobs"><tr><td colspan="4">No assignments loaded</td></tr></tbody></table>
+<section class="panel">
+<h2>4. Assignments and progress</h2>
+<p class="muted">One development job runs at a time. Select a job to see its stage, verification result, and latest saved state.</p>
+<div style="overflow-x:auto"><table><thead><tr><th>Assignment</th><th>Stage</th><th>Context</th><th>Verification</th><th></th></tr></thead><tbody id="jobs"><tr><td colspan="5">No assignments yet</td></tr></tbody></table></div>
+<h3>Selected assignment</h3>
+<div id="job-detail" aria-live="polite">Choose an assignment from the table.</div>
+<div class="actions"><button class="secondary" id="refresh" type="button">Refresh status</button></div>
 </section>
-</main>
+</div>
 <script>
-const byId = id => document.getElementById(id);
-const escapeText = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
-async function api(url, options) {
-  const response = await fetch(url, options);
-  const result = await response.json();
-  if (!response.ok) throw Error(result.error || 'Request failed');
-  return result;
+"use strict";
+const el=id=>document.getElementById(id);
+let chosenJob=null, selectedProject='';
+const escapeText=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+async function api(url,payload){
+ const options=payload===undefined?undefined:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)};
+ const response=await fetch(url,options);const body=await response.json();
+ if(!response.ok)throw new Error(body.error||'Request failed');return body;
 }
-async function refresh() {
-  try {
-    const pair = await Promise.all([api('/health'), api('/jobs')]);
-    const health = pair[0], jobs = pair[1];
-    byId('health').textContent = health.model + ' • ' + (health.active_job ? 'Working' : 'Idle') + ' • ' + health.queued_count + ' queued';
-    byId('jobs').innerHTML = jobs.jobs.length ? jobs.jobs.map(j =>
-      '<tr><td><strong>' + escapeText(j.objective) + '</strong><div><code>' + escapeText(j.id) + '</code></div></td>' +
-      '<td>' + escapeText(j.stage) + '</td><td>' + escapeText(j.context_tokens) + '</td>' +
-      '<td>' + escapeText(j.verification_status || '—') + '</td></tr>'
-    ).join('') : '<tr><td colspan="4">No assignments yet</td></tr>';
-  } catch(err) { byId('health').textContent = String(err); }
-}
-byId('task').addEventListener('submit', async event => {
-  event.preventDefault();
-  byId('submit').disabled = true;
-  byId('error').textContent = '';
-  try {
-    const result = await api('/jobs', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        project:byId('project').value,
-        objective:byId('objective').value,
-        test_command:byId('test').value.trim() ? byId('test').value.trim().split(/\s+/) : [],
-        allowed_paths:byId('allow').value.split('\n').map(x=>x.trim()).filter(Boolean)
-      })
-    });
-    byId('error').textContent = 'Queued: ' + result.id;
-    byId('objective').value = '';
-    await refresh();
-  } catch(err){ byId('error').textContent = String(err); }
-  finally { byId('submit').disabled = false; }
+function note(target,message,bad=false){el(target).textContent=message;el(target).classList.toggle('bad',bad);}
+function selectProject(path){selectedProject=path;el('project').value=path;el('workspace').textContent=path;note('workspace-note','Ready: '+path);}
+function requireProject(){if(!selectedProject)throw Error('Select a repository using “Use this folder” or “Clone repository” first');return selectedProject;}
+async function action(button,fn,errorTarget){button.disabled=true;try{await fn();}catch(err){note(errorTarget,String(err),true);}finally{button.disabled=false;}}
+el('inspect').onclick=()=>action(el('inspect'),async()=>{
+ const result=await api('/workspace/inspect',{project:el('project').value});selectProject(result.project);
+},'workspace-note');
+el('clone').onclick=()=>action(el('clone'),async()=>{
+ note('workspace-note','Cloning repository…');
+ const result=await api('/workspace/clone',{url:el('clone-url').value,name:el('clone-name').value});
+ selectProject(result.project);appendConsole('$ git clone '+result.repository+'\n'+result.output);
+},'workspace-note');
+function appendConsole(value){const box=el('console');box.textContent+='\n'+value;box.scrollTop=box.scrollHeight;}
+el('run-command').onclick=()=>action(el('run-command'),async()=>{
+ const project=requireProject();const command=el('command').value.trim();if(!command)throw Error('Type a command to run');
+ appendConsole('\n'+project+' $ '+command);note('command-note','Running…');
+ const result=await api('/workspace/command',{project,command});
+ appendConsole(result.output||'(no output)');
+ appendConsole('[exit '+(result.timed_out?'timeout':result.exit_code)+']'+(result.truncated?' [output truncated]':''));
+ note('command-note',result.timed_out?'Command timed out':'Command finished with exit '+result.exit_code,Boolean(result.timed_out||result.exit_code));
+},'command-note');
+el('command').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();el('run-command').click();}});
+el('task').addEventListener('submit',event=>{
+ event.preventDefault();action(el('submit'),async()=>{
+ const project=requireProject(),objective=el('objective').value.trim(),test=el('test').value.trim();
+ const paths=el('allow').value.split('\n').map(x=>x.trim()).filter(Boolean);
+ if(!objective||!test||!paths.length)throw Error('Assignment, verification command and allowed paths are all required');
+ const result=await api('/jobs',{project,objective,test_command:test,allowed_paths:paths});
+ note('task-note','Queued assignment '+result.id);
+ el('objective').value='';chosenJob=result.id;await refresh();
+ },'task-note');
 });
-refresh();
-setInterval(refresh, 4000);
+async function showJob(id){const body=await api('/jobs/'+encodeURIComponent(id));chosenJob=id;const fields={
+ id:body.id,stage:body.stage,project:body.project,objective:body.objective,
+ context_tokens:body.context_tokens,attempts:body.attempts,
+ verification:body.verification,last_error:body.last_error,
+ allowed_paths:body.allowed_paths
+};el('job-detail').textContent=JSON.stringify(fields,null,2);}
+async function refresh(){
+ try{
+ const [health,listing]=await Promise.all([api('/health'),api('/jobs')]);
+ el('health').textContent=health.model+' • '+(health.active_job?'Working':'Idle')+' • '+health.queued_count+' queued';
+ const tbody=el('jobs');tbody.textContent='';
+ for(const job of listing.jobs){
+  const row=document.createElement('tr');
+  for(const value of [job.objective,job.stage,job.context_tokens||'—',job.verification_status||'—']){
+   const cell=document.createElement('td');cell.textContent=String(value||'—');row.appendChild(cell);
+  }
+  const cell=document.createElement('td');const button=document.createElement('button');button.className='secondary';button.textContent='Details';button.onclick=()=>showJob(job.id).catch(e=>note('task-note',String(e),true));cell.appendChild(button);row.appendChild(cell);tbody.appendChild(row);
+ }
+ if(!listing.jobs.length)tbody.innerHTML='<tr><td colspan="5">No assignments yet</td></tr>';
+ if(chosenJob)await showJob(chosenJob);
+ }catch(err){el('health').textContent=String(err);}
+}
+el('refresh').onclick=refresh;refresh();setInterval(refresh,5000);
 </script>
 </body>
 </html>
